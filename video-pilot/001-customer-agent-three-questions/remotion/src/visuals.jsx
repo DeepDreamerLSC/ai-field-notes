@@ -59,7 +59,7 @@ export const CornerTag = ({ f, text, fontSize = 28 }) => {
   );
 };
 
-export const Subtitle = ({ lf, text, fontSize = 42, height = 144 }) => {
+export const Subtitle = ({ lf, text, fontSize = 42, height = 144, style }) => {
   const e = ease(lf, 0, 6);
   return (
     <div style={{
@@ -68,7 +68,7 @@ export const Subtitle = ({ lf, text, fontSize = 42, height = 144 }) => {
       opacity: e, padding: '12px 32px', borderRadius: 18,
       background: 'rgba(6,10,20,0.86)', border: '1px solid rgba(255,255,255,0.09)',
       color: C.ink, fontFamily: FONT, fontSize, fontWeight: 700,
-      textAlign: 'center', lineHeight: 1.4,
+      textAlign: 'center', lineHeight: 1.4, ...style,
     }}><span>{text}</span></div>
   );
 };
