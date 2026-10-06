@@ -1,0 +1,14 @@
+node_modules/
+.venv/
+narration/
+clips/
+stills/
+remotion/public/
+remotion/out/
+*.mp3
+*.mp4
+probe_*
+
+# 旁白源计时为中间产物；仅提交渲染使用的 src/timing.json。
+/timing.json
+__pycache__/
