@@ -1,0 +1,6 @@
+.venv/
+narration/
+__pycache__/
+/timing.json
+*.mp3
+*.mp4

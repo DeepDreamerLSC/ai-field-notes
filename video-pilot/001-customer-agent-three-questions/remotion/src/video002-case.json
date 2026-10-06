@@ -1,0 +1,22 @@
+{
+  "task": "提取应付 / 实付金额",
+  "newPrompt": "取最后一个数字",
+  "synthetic": true,
+  "modelMeasured": false,
+  "samples": [
+    {
+      "id": "A",
+      "input": "合计120元，优惠20元，应付100元。",
+      "expected": 100,
+      "before": 120,
+      "after": 100
+    },
+    {
+      "id": "B",
+      "input": "实付80元，订单尾号2024。",
+      "expected": 80,
+      "before": 80,
+      "after": 2024
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+# 样片工程 · 002《AI 这次答对了，你凭什么确定它真的变好了？》
+
+> 对应 Issue #3 / #6。所有者2026-10-06已授权制作第二条本地审片版；不再等待第一条反馈才开始制作。公开发布、真实观众盲看及反馈结论仍待确认。
+
+## 内容与运行时
+
+- `narration.py`：20句旁白的权威文本，生成本目录`narration/`和`timing.json`；人工稿在仓库`editorial/SCRIPT-P0-B.md`。
+- 复用第一条`remotion/`依赖与运行时：入口`src/video002.jsx`、Composition `Video002`；共享视觉组件`src/visuals.jsx`，第二条时间轴`src/video002-timing.json`、音频`public/narration002/`。不创建第二套npm工程。
+- 16:9、1920×1080、30fps；目标100–115秒，实际时长与输出身份记录在本目录`LEDGER.md`。
+- 音色沿用`zh-CN-YunxiNeural`。按句设置停顿，“这版先退回”和末尾总结使用`+0%`，其余`+6%`；尾部保留2.6秒，避免结论被匀速带过。
+- A／B金额任务、前后结果均为**合成示例，非模型实测**。B回归导致本版退回；留出组保持“未测”。不展示真实客户或模型指标，不把假设的“三组都过”画成实际批准。
+
+## 复现步骤
+
+在本目录执行；任一步失败则停止，修复后再复制当前音频与时间轴。前置条件同第一条：macOS中文字体、Python 3、`ffprobe`、Node 26、npm 11；`edge-tts==7.2.8`需要网络，首次渲染需下载Chrome Headless Shell。换字体后重新检查布局。
+
+```bash
+set -e
+python3 -m venv .venv
+.venv/bin/pip install edge-tts==7.2.8
+.venv/bin/python test_narration.py
+.venv/bin/python narration.py
+
+cp timing.json ../001-customer-agent-three-questions/remotion/src/video002-timing.json
+mkdir -p ../001-customer-agent-three-questions/remotion/public/narration002
+cp narration/*.mp3 ../001-customer-agent-three-questions/remotion/public/narration002/
+.venv/bin/python test_video.py
+cd ../001-customer-agent-three-questions/remotion
+npm ci
+npx remotion render src/video002.jsx Video002 ../../002-prompt-regression/002-prompt-regression-16x9.mp4 --crf=18
+```
+
+外部TTS不保证重新生成的字节完全相同。改文本、音色、逐句语速或停顿后重新生成并复制完整当前音频与时间轴，再渲染。MP4、MP3与中间产物不入库；公开发布仍须所有者决定。
+
+## 真实观众盲看（待执行）
+
+让未参与制作的人完整观看后独立回答，先不提示答案、不补讲内容；答不出来也记录原话。下面七问用于检查是否看懂、能否带走方法与是否愿意留存，不作为模型实测或已取得传播效果的证据。
+
+1. 前10秒，你看到了什么矛盾？
+2. 同一次改动修好了什么，又弄坏了什么？
+3. 为什么新版会把订单尾号当作金额？
+4. 这版应该通过还是退回？依据是什么？
+5. 三组样本分别保护什么；看过留出结果并据此改稿后，应怎样处理？
+6. 下次只改一条提示词，你会按什么步骤验证；三组都过能说明多大范围？
+7. 你愿意收藏或转发这条视频吗？为什么？
+
+| 记录项 | 原始记录 | 状态 |
+| --- | --- | --- |
+| 观看日期／成片版本／时长 |  | 待执行 |
+| 观众角色／是否参与制作 |  | 待执行 |
+| 第1问回答 |  | 待执行 |
+| 第2问回答 |  | 待执行 |
+| 第3问回答 |  | 待执行 |
+| 第4问回答 |  | 待执行 |
+| 第5问回答 |  | 待执行 |
+| 第6问回答 |  | 待执行 |
+| 第7问回答 |  | 待执行 |
+| 卡住或误解的时间点／原话 |  | 待执行 |
+| 感到拖沓的时间点／原话 |  | 待执行 |
+| 需修改项／所有者判断 |  | 待执行 |
+
+当前无真实盲看结果，不填写通过率、满意度或“已验证有效”。完整声音、画面、节奏与公开安全审片仍需所有者确认。

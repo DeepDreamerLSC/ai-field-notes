@@ -45,6 +45,9 @@ class NarrationTest(unittest.TestCase):
             meta = json.loads((base / "timing.json").read_text())
             self.assertEqual(meta["sentences"], module.SENTENCES)
             self.assertEqual((meta["voice"], meta["rate"]), (module.VOICE, module.RATE))
+            self.assertEqual(meta["gaps"], {"s01": module.GAP, "s02": module.GAP})
+            self.assertEqual(meta["rates"], {"s01": module.RATE, "s02": module.RATE})
+            self.assertEqual(meta["total_seconds"], round(2 + module.GAP + module.TAIL, 2))
 
             second = base / "narration" / "s02.mp3"
             previous_second = second.read_bytes()
