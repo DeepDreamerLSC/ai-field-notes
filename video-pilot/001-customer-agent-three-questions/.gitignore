@@ -1,0 +1,10 @@
+node_modules/
+.venv/
+narration/
+clips/
+stills/
+remotion/public/
+remotion/out/
+*.mp3
+*.mp4
+probe_*
