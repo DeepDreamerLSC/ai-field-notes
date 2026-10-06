@@ -4,7 +4,7 @@ import {
 } from 'remotion';
 import timing from './timing.json';
 
-/* ---------- 时间轴：18 句旁白复用静态基线的音频与计时 ---------- */
+/* ---------- 时间轴：与新生成的逐句旁白绑定 ---------- */
 const FPS = 30;
 const ids = Object.keys(timing.durations).sort();
 let acc = 0;
@@ -12,11 +12,12 @@ const SEGS = ids.map((id, i) => {
   const audio = timing.durations[id];
   const pad = i === ids.length - 1 ? timing.tail : timing.gap;
   const from = Math.round(acc * FPS);
-  const frames = Math.round((audio + pad) * FPS);
   acc += audio + pad;
+  const frames = Math.round(acc * FPS) - from;
   return { id, sentence: timing.sentences[i], from, frames, idx: i };
 });
-const TOTAL = SEGS[SEGS.length - 1].from + SEGS[SEGS.length - 1].frames + 18;
+const TOTAL = SEGS[SEGS.length - 1].from + SEGS[SEGS.length - 1].frames;
+const sentenceFrame = (f, idx) => f - SEGS[idx].from;
 
 /* ---------- 设计令牌 ---------- */
 const C = {
@@ -34,7 +35,7 @@ const GRAD = {
   background: 'linear-gradient(92deg,#4DA3FF,#67E8F9)',
   WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
 };
-const clamp = { extrapolateLeft: 'stop', extrapolateRight: 'clamp' };
+const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' };
 const ease = (f, delay = 0, dur = 9) =>
   interpolate(f, [delay, delay + dur], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
 const pop = (f, delay = 0, damping = 13) =>
@@ -65,24 +66,13 @@ const Background = ({ f }) => (
   </AbsoluteFill>
 );
 
-const Brand = ({ f }) => {
-  const e = ease(f, 1, 8);
-  return (
-    <div style={{ position: 'absolute', left: 52, top: 40, display: 'flex', alignItems: 'center', gap: 14, opacity: e, transform: `translateY(${(1 - e) * -12}px)` }}>
-      <div style={{ width: 12, height: 12, borderRadius: 4, background: 'linear-gradient(135deg,#4DA3FF,#67E8F9)', boxShadow: '0 0 14px rgba(77,163,255,0.8)' }} />
-      <div style={{ fontFamily: FONT, color: C.ink2, fontSize: 24, fontWeight: 700, letterSpacing: 6 }}>AI FIELD NOTES</div>
-      <div style={{ fontFamily: FONT, color: C.ink3, fontSize: 19, borderLeft: '1px solid rgba(255,255,255,0.16)', paddingLeft: 14 }}>企业 AI 落地 · 第 01 条</div>
-    </div>
-  );
-};
-
 const CornerTag = ({ f, text }) => {
   const e = ease(f, 4, 8);
   return (
     <div style={{
       position: 'absolute', right: 52, top: 44, opacity: e, transform: `translateY(${(1 - e) * -10}px)`,
       padding: '8px 20px', borderRadius: 999, border: `1.5px solid ${C.amber}66`,
-      color: C.amber, fontFamily: FONT, fontSize: 21, fontWeight: 600, background: 'rgba(251,191,36,0.08)',
+      color: C.amber, fontFamily: FONT, fontSize: 28, fontWeight: 600, background: 'rgba(251,191,36,0.08)',
     }}>{text}</div>
   );
 };
@@ -91,13 +81,13 @@ const Subtitle = ({ lf, text }) => {
   const e = ease(lf, 0, 6);
   return (
     <div style={{
-      position: 'absolute', left: '50%', bottom: 58, opacity: e,
-      transform: `translateX(-50%) translateY(${(1 - e) * 18}px)`,
-      padding: '15px 38px', borderRadius: 16, background: 'rgba(6,10,20,0.80)',
-      border: '1px solid rgba(255,255,255,0.09)',
-      color: C.ink, fontFamily: FONT, fontSize: 33, fontWeight: 700,
-      maxWidth: 1560, textAlign: 'center', lineHeight: 1.55, whiteSpace: 'pre-wrap',
-    }}>{text}</div>
+      position: 'absolute', left: 130, right: 130, bottom: 42, height: 144,
+      boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      opacity: e, padding: '12px 32px', borderRadius: 18,
+      background: 'rgba(6,10,20,0.86)', border: '1px solid rgba(255,255,255,0.09)',
+      color: C.ink, fontFamily: FONT, fontSize: 42, fontWeight: 700,
+      textAlign: 'center', lineHeight: 1.4,
+    }}><span>{text}</span></div>
   );
 };
 
@@ -113,10 +103,6 @@ const Appear = ({ f, delay = 0, y = 26, damping = 13, style, children }) => {
   );
 };
 
-const Float = ({ f, phase = 0, amp = 3, children, style }) => (
-  <div style={{ ...style, transform: `translateY(${Math.sin((f + phase) / 56) * amp}px)` }}>{children}</div>
-);
-
 const DrawArrow = ({ f, delay = 0, len = 64, color = C.ink3, w = 3.2 }) => {
   const p = ease(f, delay, 8);
   if (p <= 0) return <div style={{ width: len, height: 24, flexShrink: 0 }} />;
@@ -124,17 +110,6 @@ const DrawArrow = ({ f, delay = 0, len = 64, color = C.ink3, w = 3.2 }) => {
     <svg width={len} height={24} style={{ width: len, height: 24, display: 'block', overflow: 'visible', flexShrink: 0 }}>
       <line x1={2} y1={12} x2={2 + (len - 16) * p} y2={12} stroke={color} strokeWidth={w} strokeLinecap="round" />
       <polygon points={`${2 + (len - 2) * p},12 ${2 + (len - 2) * p - 13},4.5 ${2 + (len - 2) * p - 13},19.5`} fill={color} opacity={p > 0.65 ? 1 : 0} />
-    </svg>
-  );
-};
-
-const DrawArrowV = ({ f, delay = 0, h = 34, color = C.blue, w = 3 }) => {
-  const p = ease(f, delay, 7);
-  if (p <= 0) return <div style={{ width: 24, height: h, flexShrink: 0 }} />;
-  return (
-    <svg width={24} height={h} style={{ width: 24, height: h, display: 'block', overflow: 'visible', flexShrink: 0 }}>
-      <line x1={12} y1={2} x2={12} y2={2 + (h - 14) * p} stroke={color} strokeWidth={w} strokeLinecap="round" />
-      <polygon points={`12,${2 + (h - 2) * p} 4.5,${2 + (h - 2) * p - 12} 19.5,${2 + (h - 2) * p - 12}`} fill={color} opacity={p > 0.65 ? 1 : 0} />
     </svg>
   );
 };
@@ -169,271 +144,240 @@ const Box = ({ f, delay = 0, w, h, style, children }) => {
   );
 };
 
-/* ---------- 场景 1：Hook ---------- */
-const SceneHook = ({ fs, segIdx }) => (
+/* ---------- 场景 1：开场直接交付三问 ---------- */
+const SceneHook = ({ f, fs, segIdx }) => (
   <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-    <div style={{ position: 'absolute', left: 150, top: 300, width: 800 }}>
+    <div style={{ position: 'absolute', left: 130, top: 252, width: 770 }}>
       <Appear f={fs} delay={2}>
-        <div style={{ fontSize: 78, fontWeight: 900, color: C.ink, lineHeight: 1.25 }}>想做 AI Agent？</div>
+        <div style={{ fontSize: 82, fontWeight: 900, color: C.ink, lineHeight: 1.3 }}>想做 AI Agent？</div>
       </Appear>
       <Appear f={fs} delay={10}>
-        <div style={{ fontSize: 78, fontWeight: 900, lineHeight: 1.25, ...GRAD }}>先确认三件事</div>
+        <div style={{ fontSize: 82, fontWeight: 900, lineHeight: 1.3, ...GRAD }}>我先问三件事</div>
       </Appear>
-      <div style={{ marginTop: 26, height: 5, width: 320 * ease(fs, 18, 14), borderRadius: 3, background: 'linear-gradient(90deg,#4DA3FF,#67E8F9)' }} />
+      <div style={{ marginTop: 32, height: 5, width: 360 * ease(fs, 18, 14), borderRadius: 3, background: 'linear-gradient(90deg,#4DA3FF,#67E8F9)' }} />
       <Appear f={fs} delay={26}>
-        <div style={{ marginTop: 30, fontSize: 30, color: C.ink2 }}>先问对问题，再谈技术选型</div>
+        <div style={{ marginTop: 32, fontSize: 38, color: C.ink2 }}>把业务问清楚，再选工具</div>
       </Appear>
     </div>
-    <div style={{ position: 'absolute', right: 150, top: 252, display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {[1, 2, 3].map((n, i) => (
-        <Float key={n} f={fs} phase={i * 40}>
-          <Box f={fs} delay={segIdx >= 1 ? 24 + i * 9 : 64 + i * 12} w={620} h={148} style={{ display: 'flex', alignItems: 'center', gap: 28, padding: '0 40px' }}>
-            <div style={{ fontSize: 52, fontWeight: 900, ...GRAD }}>{['①', '②', '③'][i]}</div>
-            <div>
-              <div style={{ fontSize: 24, color: C.ink3, marginBottom: 6 }}>第 {n} 问</div>
-              <div style={{ fontSize: 44, fontWeight: 800, color: C.ink2 }}>？</div>
-            </div>
-          </Box>
-        </Float>
+    <div style={{ position: 'absolute', right: 130, top: 202, display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {['流程怎么走？', '数据和权限够吗？', '怎样算成功？'].map((t, i) => (
+        <Box key={t} f={fs} delay={20 + i * 10} w={750} h={166} style={{ display: 'flex', alignItems: 'center', gap: 28, padding: '0 38px', boxSizing: 'border-box' }}>
+          <div style={{ fontSize: 48, fontWeight: 900, ...GRAD }}>{`0${i + 1}`}</div>
+          <div style={{ fontSize: 46, fontWeight: 800, color: C.ink }}>{t}</div>
+        </Box>
       ))}
-      <Appear f={fs} delay={segIdx >= 2 ? 3 : 999}>
-        <div style={{
-          alignSelf: 'flex-end', padding: '12px 26px', borderRadius: 999,
-          border: `1.5px solid ${C.amber}88`, color: C.amber, fontSize: 27, fontWeight: 700, background: 'rgba(251,191,36,0.08)',
-        }}>他要的，可能根本不是 Agent</div>
-      </Appear>
     </div>
+    {segIdx >= 2 && (
+      <Appear f={sentenceFrame(f, 2)} delay={2} style={{ position: 'absolute', top: 790, width: '100%', textAlign: 'center' }}>
+        <div style={{ fontSize: 40, fontWeight: 800, color: C.amber }}>三问答完，再选工具</div>
+      </Appear>
+    )}
   </div>
 );
 
-/* ---------- 场景 2：错误路径 ---------- */
-const ScenePath = ({ fs, segIdx }) => {
-  const labs = ['选模型', '搭知识库', '上框架', 'demo 惊艳', '上线失控'];
-  const red = segIdx >= 5;
+/* ---------- 场景 2：短铺垫，进入同一虚构示例 ---------- */
+const ScenePath = ({ f, fs, segIdx }) => {
+  const labs = ['选模型', '搭知识库', '上框架', 'demo 惊艳', '能上线？'];
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      <div style={{ position: 'absolute', left: 120, right: 120, top: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: segIdx >= 4 ? 0.72 : 1, transition: 'opacity 0.4s' }}>
+      <Appear f={fs} delay={2} style={{ position: 'absolute', top: 178, width: '100%', textAlign: 'center' }}>
+        <div style={{ fontSize: 68, fontWeight: 900, color: C.ink }}>demo 惊艳 <span style={{ color: C.amber }}>≠ 能上线</span></div>
+      </Appear>
+      <div style={{ position: 'absolute', left: 120, right: 120, top: 354, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {labs.map((t, i) => (
           <div key={t} style={{ display: 'flex', alignItems: 'center' }}>
-            <Float f={fs} phase={i * 30}>
-              <Box f={fs} delay={4 + i * 8} w={268} h={112} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderColor: red && i === 4 ? `${C.red}99` : undefined,
-                background: red && i === 4 ? 'linear-gradient(135deg,rgba(248,113,113,0.18),rgba(248,113,113,0.06))' : CARD.background,
-                boxShadow: red && i === 4 ? '0 0 42px rgba(248,113,113,0.28)' : CARD.boxShadow,
-              }}>
-                <div style={{ fontSize: 36, fontWeight: 800, color: red && i === 4 ? C.red : C.ink }}>{t}</div>
-              </Box>
-            </Float>
-            {i < 4 && <DrawArrow f={fs} delay={10 + i * 8} len={62} color={red ? C.ink3 : C.ink3} />}
+            <Box f={fs} delay={4 + i * 8} w={268} h={126} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderColor: i === 4 ? `${C.amber}aa` : undefined,
+              background: i === 4 ? 'rgba(251,191,36,0.08)' : CARD.background,
+            }}>
+              <div style={{ fontSize: 40, fontWeight: 800, color: i === 4 ? C.amber : C.ink }}>{t}</div>
+            </Box>
+            {i < 4 && <DrawArrow f={fs} delay={10 + i * 8} len={62} />}
           </div>
         ))}
       </div>
-      <Appear f={fs} delay={46} style={{ position: 'absolute', width: '100%', top: 496, textAlign: 'center' }}>
-        <div style={{ fontSize: 32, color: C.ink2 }}>每一步都在回答“怎么做”</div>
-      </Appear>
       {segIdx >= 4 && (
-        <Appear f={fs} delay={2} style={{ position: 'absolute', width: '100%', top: 580, textAlign: 'center' }}>
-          <div style={{ fontSize: 56, fontWeight: 900, color: C.amber }}>但没人回答：“做什么？算成功？”</div>
-        </Appear>
-      )}
-      {red && (
-        <div style={{ position: 'absolute', width: '100%', top: 720, display: 'flex', justifyContent: 'center', gap: 30 }}>
-          {['数据没对上', '权限没想清楚', '效果没法衡量'].map((t, i) => (
-            <Appear key={t} f={fs} delay={4 + i * 7}>
-              <div style={{
-                padding: '14px 34px', borderRadius: 16, border: `1.5px solid ${C.red}88`,
-                color: C.red, fontSize: 30, fontWeight: 700, background: 'rgba(248,113,113,0.08)',
-              }}>{t}</div>
+        <div style={{ position: 'absolute', top: 576, width: '100%', display: 'flex', justifyContent: 'center', gap: 30 }}>
+          {['做什么', '谁批准', '怎样验收'].map((t, i) => (
+            <Appear key={t} f={sentenceFrame(f, 4)} delay={2 + i * 7}>
+              <div style={{ ...CARD, padding: '18px 44px', fontSize: 44, fontWeight: 800, color: C.amber }}>{t}</div>
             </Appear>
           ))}
         </div>
       )}
+      {segIdx >= 5 && (
+        <Appear f={sentenceFrame(f, 5)} delay={2} style={{ position: 'absolute', top: 766, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 42, fontWeight: 800, color: C.blue }}>用订单核对，走一遍三问</div>
+        </Appear>
+      )}
     </div>
   );
 };
 
-/* ---------- 场景 3：三栏诊断图 ---------- */
-const COLW = 540, COLH = 566, GAP = 36;
-const ColCard = ({ fs, x, num, title, lit, active, children }) => (
-  <div style={{ position: 'absolute', left: x, top: 236, width: COLW, height: COLH, ...CARD, borderColor: active ? `${C.blue}cc` : lit ? `${C.blue}55` : 'rgba(255,255,255,0.10)', boxShadow: active ? `0 0 60px rgba(77,163,255,0.20)` : CARD.boxShadow, opacity: lit ? 1 : 0.42, transition: 'opacity 0.5s' }}>
-    <Appear f={fs} delay={lit ? 2 : 999}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '30px 36px 0' }}>
-        <div style={{
-          padding: '7px 20px', borderRadius: 999, fontSize: 25, fontWeight: 800,
-          color: active ? '#08121F' : C.ink, background: active ? 'linear-gradient(92deg,#4DA3FF,#67E8F9)' : 'rgba(255,255,255,0.08)',
-        }}>{`问${num}`}</div>
-        <div style={{ fontSize: 44, fontWeight: 900, color: C.ink }}>{title}</div>
-      </div>
-    </Appear>
-    <div style={{ margin: '22px 36px 0', height: 1.5, background: 'rgba(255,255,255,0.10)' }} />
-    <div style={{ padding: '26px 44px 0' }}>{children}</div>
-  </div>
-);
-
-const SceneDiag = ({ fs, segIdx }) => {
-  const lit1 = segIdx >= 7, lit2 = segIdx >= 8, lit3 = segIdx >= 11;
-  const act = segIdx === 7 ? 0 : (segIdx >= 8 && segIdx <= 10) ? 1 : segIdx === 11 ? 2 : -1;
-  const steps = ['接需求', '录入', '核对', '交付'];
+/* ---------- 场景 3：保留三问导航，放大正在讲解的问题 ---------- */
+const SceneDiag = ({ f, segIdx }) => {
+  const act = segIdx <= 7 ? 0 : segIdx <= 10 ? 1 : 2;
+  const local = sentenceFrame(f, [6, 8, 11][act]);
+  const titles = ['流程', '数据与边界', '验收'];
+  const questions = ['今天，人怎么做？', '拿得到、靠得住？\n哪些动作要批准？', '先记基线，再定目标。'];
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      <ColCard fs={fs} x={114} num="一" title="流程" lit={lit1} active={act === 0}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {steps.map((t, i) => (
-            <div key={t} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <Appear f={fs} delay={lit1 ? 6 + i * 8 : 999} y={16}>
-                <div style={{
-                  width: 300, padding: '14px 0', textAlign: 'center', borderRadius: 14,
-                  border: `1.5px solid ${C.blue}77`, color: C.ink, fontSize: 30, fontWeight: 700,
-                  background: 'rgba(77,163,255,0.07)',
-                }}>{t}</div>
-              </Appear>
-              {i < 3 && <DrawArrowV f={fs} delay={lit1 ? 12 + i * 8 : 999} h={30} />}
-            </div>
-          ))}
-          <Appear f={fs} delay={lit1 ? 44 : 999}>
-            <div style={{ marginTop: 10, fontSize: 25, color: C.ink3 }}>一步步画出来</div>
-          </Appear>
+      <div style={{ position: 'absolute', left: 130, top: 118, fontSize: 56, fontWeight: 900, color: C.ink }}>用订单核对，回答三问</div>
+      <div style={{ position: 'absolute', left: 130, right: 130, top: 220, display: 'flex', gap: 24 }}>
+        {titles.map((t, i) => (
+          <div key={t} style={{
+            ...CARD, flex: 1, padding: '18px 26px', display: 'flex', alignItems: 'center', gap: 22,
+            borderColor: i === act ? `${C.blue}bb` : 'rgba(255,255,255,0.12)',
+            color: i === act ? C.ink : C.ink2, fontSize: 36, fontWeight: 800,
+            background: i === act ? 'rgba(77,163,255,0.12)' : CARD.background,
+          }}><span style={{ color: i === act ? C.cyan : C.ink3 }}>{`0${i + 1}`}</span>{t}</div>
+        ))}
+      </div>
+      <Box key={act} f={local} delay={0} w={1660} h={462} style={{ position: 'absolute', left: 130, top: 332, boxSizing: 'border-box', borderColor: `${C.blue}66` }}>
+        <div style={{ position: 'absolute', left: 52, top: 58, width: 510 }}>
+          <div style={{ fontSize: 70, fontWeight: 900, color: C.ink }}>{titles[act]}</div>
+          <div style={{ marginTop: 26, fontSize: 42, fontWeight: 700, color: C.cyan, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{questions[act]}</div>
+          <div style={{ marginTop: 34, fontSize: 32, color: C.ink2 }}>虚构示例 · 订单核对</div>
         </div>
-      </ColCard>
-
-      <ColCard fs={fs} x={114 + COLW + GAP} num="二" title="数据与边界" lit={lit2} active={act === 1}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 17 }}>
-          {[['订单记录', true], ['商品目录', true], ['关键反馈', false]].map(([t, ok], i) => (
-            <div key={t}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                {ok ? <Check f={fs} delay={lit2 ? 4 + i * 8 : 999} /> : <Cross f={fs} delay={lit2 ? 4 + i * 8 : 999} />}
-                <div style={{ fontSize: 31, fontWeight: 700, color: C.ink }}>{t}</div>
-                {!ok && <div style={{ fontSize: 24, color: C.red }}>（拿不到）</div>}
+        <div style={{ position: 'absolute', left: 610, top: 48, right: 44 }}>
+          {act === 0 && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', marginTop: 78 }}>
+                {['接单', '查库存', '核对', '确认'].map((t, i) => (
+                  <div key={t} style={{ display: 'flex', alignItems: 'center' }}>
+                    <Box f={local} delay={4 + i * 9} w={196} h={118} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: `${C.blue}66` }}>
+                      <span style={{ fontSize: 42, fontWeight: 800, color: C.ink }}>{t}</span>
+                    </Box>
+                    {i < 3 && <DrawArrow f={local} delay={12 + i * 9} len={38} color={C.blue} />}
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-          <Appear f={fs} delay={segIdx >= 9 ? 3 : 999}>
-            <div style={{ alignSelf: 'flex-start', marginTop: 6, padding: '9px 22px', borderRadius: 999, border: `1.5px solid ${C.amber}88`, color: C.amber, fontSize: 25, fontWeight: 700, background: 'rgba(251,191,36,0.08)' }}>
-              答不了 / 只能猜
-            </div>
-          </Appear>
-          {segIdx >= 10 && (
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Appear f={fs} delay={3}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <Check f={fs} delay={6} size={26} />
-                  <span style={{ fontSize: 29, color: C.ink }}>可自动</span>
-                  <div style={{ width: 22, height: 22, borderRadius: 5, border: `2.5px solid ${C.amber}cc`, marginLeft: 26 }} />
-                  <span style={{ fontSize: 29, color: C.ink }}>需人工</span>
-                </div>
+              {segIdx >= 7 && (
+                <Appear f={sentenceFrame(f, 7)} delay={6}>
+                  <div style={{ marginTop: 58, fontSize: 38, fontWeight: 700, color: C.ink2 }}>先画出今天的流程</div>
+                </Appear>
+              )}
+            </>
+          )}
+          {act === 1 && (
+            <>
+              <div style={{ display: 'flex', gap: 32, marginTop: 6 }}>
+                {[['订单', true], ['库存', false], ['核对规则', true]].map(([t, ok], i) => (
+                  <Appear key={t} f={local} delay={4 + i * 8}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {ok ? <Check f={local} delay={8 + i * 8} size={36} /> : <Cross f={local} delay={8 + i * 8} size={36} />}
+                      <span style={{ fontSize: 42, fontWeight: 800, color: C.ink }}>{t}</span>
+                    </div>
+                  </Appear>
+                ))}
+              </div>
+              {segIdx >= 9 && (
+                <Appear f={sentenceFrame(f, 9)} delay={2}>
+                  <div style={{ marginTop: 38, padding: '14px 24px', borderRadius: 16, border: `1px solid ${C.amber}66`, color: C.amber, fontSize: 40, fontWeight: 800 }}>缺库存 → 停下 / 转人工</div>
+                </Appear>
+              )}
+              {segIdx >= 10 && (
+                <Appear f={sentenceFrame(f, 10)} delay={2}>
+                  <div style={{ marginTop: 30, fontSize: 36, color: C.ink, lineHeight: 1.65 }}>
+                    <div><span style={{ color: C.green }}>可自动：</span>核对</div>
+                    <div><span style={{ color: C.amber }}>需批准：</span>改单 / 承诺交期</div>
+                    <div style={{ color: C.amber }}>异常 → 人工兜底</div>
+                  </div>
+                </Appear>
+              )}
+            </>
+          )}
+          {act === 2 && (
+            <>
+              <Appear f={local} delay={4}>
+                <div style={{ fontSize: 38, fontWeight: 700, color: C.ink2 }}>核对耗时（虚构示例）</div>
               </Appear>
-              <Appear f={fs} delay={12}>
-                <div style={{ fontSize: 28, color: C.amber, fontWeight: 700 }}>异常 → 人工兜底</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 28, marginTop: 26 }}>
+                {[['当前基线', '12 分钟'], ['试点目标', '8 分钟']].map(([label, value], i) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+                    {i === 1 && <DrawArrow f={local} delay={16} len={64} color={C.amber} w={4} />}
+                    <Appear f={local} delay={6 + i * 14}>
+                      <div style={{ ...CARD, width: 350, padding: '22px 0', textAlign: 'center', borderColor: i === 1 ? `${C.amber}88` : 'rgba(255,255,255,0.15)' }}>
+                        <div style={{ fontSize: 34, color: C.ink2 }}>{label}</div>
+                        <div style={{ marginTop: 12, fontSize: 68, fontWeight: 900, color: i === 1 ? C.amber : C.ink }}>{value}</div>
+                      </div>
+                    </Appear>
+                  </div>
+                ))}
+              </div>
+              <Appear f={local} delay={32}>
+                <div style={{ marginTop: 28, fontSize: 38, fontWeight: 800, color: C.amber }}>质量底线：差错不能增加</div>
               </Appear>
-            </div>
+            </>
           )}
         </div>
-      </ColCard>
-
-      <ColCard fs={fs} x={114 + 2 * (COLW + GAP)} num="三" title="验收" lit={lit3} active={act === 2}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Appear f={fs} delay={lit3 ? 3 : 999} y={18}>
-            <div style={{
-              width: 380, padding: '26px 0 22px', textAlign: 'center', borderRadius: 18,
-              border: `1.5px solid ${C.amber}aa`, background: 'rgba(251,191,36,0.07)',
-            }}>
-              <div style={{ fontSize: 27, color: C.ink2, marginBottom: 10 }}>交付时长</div>
-              <div style={{ fontSize: 47, fontWeight: 900, color: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-                <span>3.2 天</span>
-                <DrawArrow f={fs} delay={lit3 ? 10 : 999} len={56} color={C.amber} w={4} />
-                <span style={{ color: C.amber }}>2.5 天</span>
-              </div>
-              <div style={{ marginTop: 10, fontSize: 22, color: C.ink3 }}>（示例）</div>
-            </div>
-          </Appear>
-          <Appear f={fs} delay={lit3 ? 26 : 999}>
-            <div style={{ marginTop: 26, fontSize: 33, fontWeight: 800, color: C.blue }}>哪个数字变了？</div>
-          </Appear>
-          <Appear f={fs} delay={lit3 ? 34 : 999}>
-            <div style={{ marginTop: 12, fontSize: 27, color: C.ink2 }}>说不清指标 = 没法验证</div>
-          </Appear>
-        </div>
-      </ColCard>
-
-      <Appear f={fs} delay={50} style={{ position: 'absolute', width: '100%', top: 836, textAlign: 'center' }}>
-        <span style={{ display: 'inline-block', padding: '12px 44px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)', fontSize: 29, color: C.ink2 }}>
-          结论：要不要 Agent —— 看图说话
-        </span>
-      </Appear>
+      </Box>
     </div>
   );
 };
 
-/* ---------- 场景 4：阶梯判断 ---------- */
-const Step = ({ fs, delay, x, y, w, h, title, subs, color, lit, glow, note }) => {
-  const s = pop(fs, delay, 12);
+/* ---------- 场景 4：依需求选择工具 ---------- */
+const Step = ({ f, x, y, w, h, title, subs, color, lit }) => {
+  const s = pop(f, 2, 12);
   return (
     <div style={{
       position: 'absolute', left: x, top: y, width: w, height: h, ...CARD,
-      borderColor: lit ? `${color}cc` : 'rgba(255,255,255,0.10)',
-      boxShadow: lit ? `0 0 ${glow ? 70 : 46}px ${color}33` : CARD.boxShadow,
-      opacity: lit ? 1 : 0.52, transition: 'opacity 0.5s',
-      transform: `scale(${(0.92 + s * 0.08) * (glow ? 1.03 : 1)})`,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+      borderColor: lit ? `${color}cc` : 'rgba(255,255,255,0.12)',
+      boxShadow: lit ? `0 0 40px ${color}22` : CARD.boxShadow,
+      opacity: lit ? 0.5 + fade(s) * 0.5 : 0.55,
+      transform: `scale(${lit ? 0.97 + s * 0.03 : 1})`,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18,
     }}>
-      <div style={{ fontSize: 44, fontWeight: 900, color: lit ? C.ink : C.ink2 }}>{title}</div>
-      {subs.map((sub, i) => (
-        <div key={i} style={{ fontSize: 27, color: lit ? color : C.ink3, fontWeight: 600 }}>{sub}</div>
-      ))}
-      {note && <div style={{ fontSize: 21, color: C.ink3, marginTop: 2 }}>{note}</div>}
+      <div style={{ fontSize: 52, fontWeight: 900, color: lit ? C.ink : C.ink2 }}>{title}</div>
+      {subs.map((sub) => <div key={sub} style={{ fontSize: 36, color: lit ? color : C.ink2, fontWeight: 700 }}>{sub}</div>)}
     </div>
   );
 };
 
-const SceneLadder = ({ fs, segIdx }) => {
-  const l1 = segIdx >= 12, l2 = segIdx >= 13, l3 = segIdx >= 14, tag = segIdx === 15;
-  return (
-    <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      <Step fs={fs} delay={4} x={140} y={560} w={480} h={190} title="普通自动化" subs={['规则写得死']} color={C.green} lit={l1} glow={tag} />
-      <Step fs={fs} delay={12} x={690} y={420} w={480} h={190} title="+ 模型组件" subs={['局部要理解语义']} color={C.blue} lit={l2} glow={tag} />
-      <Step fs={fs} delay={20} x={1240} y={250} w={540} h={250} title="Agent" subs={['多步规划', '自主用工具']} color={C.amber} lit={l3} note="（典型场景）" />
-      {tag && (
-        <Appear f={fs} delay={4} style={{ position: 'absolute', width: '100%', top: 788, textAlign: 'center' }}>
-          <span style={{ display: 'inline-block', padding: '14px 40px', borderRadius: 999, border: `1.5px solid ${C.amber}99`, color: C.amber, fontSize: 32, fontWeight: 800, background: 'rgba(251,191,36,0.09)' }}>
-            图里没有这类需求 → 停在前两格
-          </span>
-        </Appear>
-      )}
-    </div>
-  );
-};
+const SceneLadder = ({ f, fs, segIdx }) => (
+  <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
+    <Appear f={fs} delay={2} style={{ position: 'absolute', left: 130, top: 124 }}>
+      <div style={{ fontSize: 64, fontWeight: 900, color: C.ink }}>按需求，选最小的工具</div>
+    </Appear>
+    <Step f={sentenceFrame(f, 12)} x={130} y={492} w={510} h={230} title="普通自动化" subs={['规则固定']} color={C.green} lit={true} />
+    <Step f={sentenceFrame(f, 13)} x={705} y={378} w={510} h={230} title="+ 模型组件" subs={['局部理解文字']} color={C.blue} lit={segIdx >= 13} />
+    <Step f={sentenceFrame(f, 14)} x={1280} y={266} w={510} h={276} title="Agent" subs={['边执行边决策', '自主选择工具']} color={C.amber} lit={segIdx === 14} />
+    {segIdx >= 15 && (
+      <Appear f={sentenceFrame(f, 15)} delay={2} style={{ position: 'absolute', width: '100%', top: 796, textAlign: 'center' }}>
+        <span style={{ display: 'inline-block', padding: '12px 38px', borderRadius: 999, border: `1.5px solid ${C.amber}88`, color: C.amber, fontSize: 36, fontWeight: 800 }}>没有这类需求 → 停在前两格</span>
+      </Appear>
+    )}
+  </div>
+);
 
-/* ---------- 场景 5：收尾 ---------- */
-const SceneQuote = ({ fs, segIdx }) => {
-  const nxt = segIdx >= 17;
-  return (
-    <div style={{ position: 'absolute', inset: 0, fontFamily: FONT, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 250 }}>
-      <Appear f={fs} delay={2} y={34}>
-        <div style={{ fontSize: 84, fontWeight: 900, color: C.ink }}>Agent 是最后一格，</div>
+/* ---------- 场景 5：收尾与实际第二条选题一致 ---------- */
+const SceneQuote = ({ f, fs, segIdx }) => (
+  <div style={{ position: 'absolute', inset: 0, fontFamily: FONT, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 220 }}>
+    <Appear f={fs} delay={2} y={34}>
+      <div style={{ fontSize: 92, fontWeight: 900, color: C.ink }}>先把业务问清楚，</div>
+    </Appear>
+    <Appear f={fs} delay={12} y={34}>
+      <div style={{ marginTop: 12, fontSize: 92, fontWeight: 900, ...GRAD }}>再决定要不要 Agent。</div>
+    </Appear>
+    <div style={{ marginTop: 42, height: 4, width: 540 * ease(fs, 22, 16), borderRadius: 2, background: 'linear-gradient(90deg,#4DA3FF,#67E8F9)' }} />
+    {segIdx >= 17 && (
+      <Appear f={sentenceFrame(f, 17)} delay={4} y={22}>
+        <div style={{ marginTop: 46, textAlign: 'center' }}>
+          <div style={{ color: C.ink2, fontSize: 32 }}>下期 · 如何构建可靠 AI 系统</div>
+          <div style={{ marginTop: 20, fontSize: 48, fontWeight: 800, color: C.ink }}>AI 这次答对了，你凭什么确定它真的变好了？</div>
+        </div>
       </Appear>
-      <Appear f={fs} delay={12} y={34}>
-        <div style={{ fontSize: 84, fontWeight: 900, ...GRAD }}>不是第一格。</div>
-      </Appear>
-      <div style={{ marginTop: 44, height: 4, width: 460 * ease(fs, 22, 16), borderRadius: 2, background: 'linear-gradient(90deg,#4DA3FF,#67E8F9)' }} />
-      {nxt && (
-        <Appear f={fs} delay={4} y={22}>
-          <div style={{ marginTop: 46, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-            <span style={{ padding: '8px 24px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)', color: C.ink2, fontSize: 24 }}>下期</span>
-            <div style={{ fontSize: 42, fontWeight: 800, color: C.ink2 }}>怎么切出第一段最小、可验证的工作负载</div>
-          </div>
-        </Appear>
-      )}
-    </div>
-  );
-};
+    )}
+  </div>
+);
 
 /* ---------- 场景路由 ---------- */
 const SCENE_OF = (i) =>
   i <= 2 ? 'hook' : i <= 5 ? 'path' : i <= 11 ? 'diag' : i <= 15 ? 'ladder' : 'quote';
 const SCENE_START = {};
 [0, 3, 6, 12, 16].forEach((i) => { SCENE_START[SCENE_OF(i)] = SEGS[i].from; });
-const SCENE_TAG = { hook: null, path: '示意', diag: '方法示意', ladder: null, quote: null };
+const SCENE_TAG = { hook: null, path: '虚构示例', diag: '虚构示例 · 方法示意', ladder: '选型示意', quote: null };
 
 const MainVideo = () => {
   const f = useCurrentFrame();
@@ -446,11 +390,11 @@ const MainVideo = () => {
     <AbsoluteFill style={{ opacity: fadeIn * fadeOut }}>
       <Background f={f} />
       {SCENE_TAG[scene] && <CornerTag f={f} text={SCENE_TAG[scene]} />}
-      {scene === 'hook' && <SceneHook fs={fs} segIdx={seg.idx} />}
-      {scene === 'path' && <ScenePath fs={fs} segIdx={seg.idx} />}
-      {scene === 'diag' && <SceneDiag fs={fs} segIdx={seg.idx} />}
-      {scene === 'ladder' && <SceneLadder fs={fs} segIdx={seg.idx} />}
-      {scene === 'quote' && <SceneQuote fs={fs} segIdx={seg.idx} />}
+      {scene === 'hook' && <SceneHook f={f} fs={fs} segIdx={seg.idx} />}
+      {scene === 'path' && <ScenePath f={f} fs={fs} segIdx={seg.idx} />}
+      {scene === 'diag' && <SceneDiag f={f} fs={fs} segIdx={seg.idx} />}
+      {scene === 'ladder' && <SceneLadder f={f} fs={fs} segIdx={seg.idx} />}
+      {scene === 'quote' && <SceneQuote f={f} fs={fs} segIdx={seg.idx} />}
       <Subtitle key={seg.id} lf={f - seg.from} text={seg.sentence} />
       <ProgressBar f={f} />
       {SEGS.map((s) => (

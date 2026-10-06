@@ -1,28 +1,36 @@
 # 样片工程 · 001《客户说想做 AI Agent，我会先问他三个问题》
 
-> 对应 Issue #2（脚本）/ #6（生产试点）。当前状态：**v2.2，待所有者人工审片；不构成发布授权**。
+> 对应 Issue #2 / #6。当前制作范围为 **v3 本地审片版**，所有者已授权修改 PR 并制作；最终审片与公开发布待所有者确认。
 
 ## 工程内容
 
-- `remotion/` — Remotion 4.x 工程（16:9，1920×1080，30fps）：`src/index.jsx` 单文件含全部场景组件与动效，`src/timing.json` 为分句时间轴（由 narration.py 生成）
-- `narration.py` — edge-tts 分句旁白生成器（音色 `zh-CN-YunxiNeural`，语速 `+6%`，所有者 2026-10-06 试听选定；18 句文本内嵌于脚本）
-- `frames.py` / `build.py` — v1 静态图 + ffmpeg 基线管线（已被 Remotion 版替代，保留作 #6 要求的"渲染器 vs 简单剪辑"成本对照证据）
-- `LEDGER.md` — 生产账本：所有者裁定记录、两版成本与返工、视觉验收三轮记录
+- `narration.py`：18 句旁白的权威文本；音色 `zh-CN-YunxiNeural`、语速 `+6%`，生成音频与 `timing.json`。
+- `remotion/`：1920×1080、16:9、30fps；`src/index.jsx` 包含本片场景，消费生成的时间轴与音频。
+- `editorial/SCRIPT-P0-A.md`：v3 逐句人工审阅稿与分镜；修改时核对它与旁白权威文本一致。
+- `frames.py` / `build.py`：v1 9:16 静态基线，保留作历史成本对照；不是当前渲染入口。
+- `LEDGER.md`：所有者指示、版本、实际成本、返工与审片记录。
 
 ## 复现步骤
 
-```bash
-# 1. 旁白（需网络，edge-tts）
-python3 -m venv .venv && .venv/bin/pip install pillow edge-tts
-.venv/bin/python narration.py                       # 生成 narration/*.mp3 + timing.json
+在本目录执行；任一步失败时先修复，不继续复制旧时间轴或渲染。已验证制作环境为 macOS、Node 26、npm 11；需 Python 3、`ffmpeg` / `ffprobe` 在 PATH（当前旁白测时使用 `ffprobe`，静态基线使用 `ffmpeg`）。画面使用系统中文字体；换系统或字体后重新检查布局。TTS 和首次下载 Chrome Headless Shell 需要网络。
 
-# 2. 渲染（首次会下载 Chrome Headless Shell）
-cp timing.json remotion/src/
-mkdir -p remotion/public && cp -r narration remotion/public/
-cd remotion && npm install && npx remotion render src/index.jsx Video ../out.mp4
+```bash
+set -e
+python3 -m venv .venv
+.venv/bin/pip install edge-tts==7.2.8
+.venv/bin/python test_narration.py
+.venv/bin/python narration.py
+
+cp timing.json remotion/src/timing.json
+mkdir -p remotion/public
+cp -R narration remotion/public/
+cd remotion
+npm ci
+npx remotion render src/index.jsx Video ../001-customer-agent-three-questions-16x9-v3.mp4 --crf=18
 ```
 
-## 刻意不入库的文件
+TTS 使用外部服务，重新生成不保证音频逐字节相同。文本、音色或语速修改后重跑旁白，再复制当前时间轴与音频、重新渲染；不要只改字幕。
 
-- **成片 MP4 / 旁白 MP3**：可再生成产物；且成片放入公开仓库等同于发布，发布权归所有者
-- `node_modules/`、抽帧 `stills/`、中间 `clips/`：构建产物
+## 不入库的产物
+
+成片 MP4、旁白 MP3、`node_modules/`、抽帧与中间片段不入库。公开仓库中的成片等同于公开发布，须由所有者决定。当前审片结果、输入版本与输出身份记录在 `LEDGER.md`。
