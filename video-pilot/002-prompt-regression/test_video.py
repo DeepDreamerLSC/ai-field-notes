@@ -12,6 +12,11 @@ SRC = Path(__file__).parent.parent / '001-customer-agent-three-questions/remotio
 
 class VideoContract(unittest.TestCase):
     def test_decision_and_timing(self):
+        # The scene boundaries are intentionally specific to this 20-line story.
+        self.assertEqual(len(narration.SENTENCES), 20)
+        script = (SRC.parents[3] / 'editorial/SCRIPT-P0-B.md').read_text()
+        storyboard = re.findall(r'^\| (s\d{2}) \| ([^|]+) \|', script, re.M)
+        self.assertEqual(storyboard, [(f's{i:02d}', text) for i, text in enumerate(narration.SENTENCES, 1)])
         example = json.loads((SRC / 'video002-case.json').read_text())
         self.assertTrue(example['synthetic'])
         self.assertFalse(example['modelMeasured'])

@@ -30,8 +30,8 @@ const NumberChange = ({before, after, p, color, size = 170}) => (
 
 const Hook = ({f}) => (
   <>
-    <div style={{...heading, top: 130, fontSize: 70}}>一个修复，两个相反的结果</div>
-    <div style={{position: 'absolute', left: 130, top: 240, color: C.ink2, fontSize: 40}}>同一个 Prompt 改动</div>
+    <div style={{...heading, top: 130, fontSize: 70}}>AI 把错题改对了，就能换新版？</div>
+    <div style={{position: 'absolute', left: 130, top: 240, color: C.ink2, fontSize: 40}}>金额提取 · 同一次提示词改动 · 原输出 → 新输出</div>
     {[a, b].map((sample, i) => {
       const p = ease(f, 30+i*30, 24);
       const color = i ? C.red : C.green;
@@ -43,15 +43,15 @@ const Hook = ({f}) => (
         <div style={{position: 'absolute', left: 1350, top: 59, opacity: p}}>{i ? <Cross f={100} size={48}/> : <Check f={100} size={48}/>}<div style={{fontSize: 40, color, marginTop: 15}}>{i ? '新错出现' : '旧错修复'}</div></div>
       </div>;
     })}
-    <Appear f={local(f, 1)} style={{position: 'absolute', left: 130, top: 805}}><div style={{fontSize: 54, fontWeight: 800, color: C.amber}}>这次优化，能通过吗？</div></Appear>
+    <Appear f={local(f, 1)} style={{position: 'absolute', left: 130, top: 805}}><div style={{fontSize: 54, fontWeight: 800, color: C.amber}}>旧错修好了，原来对的却错了</div></Appear>
   </>
 );
 
 const Case = ({f}) => (
   <>
-    <div style={heading}>先把任务和答案说清楚</div>
+    <div style={heading}>从订单备注里，找出要付的钱</div>
     <div style={{...card, position: 'absolute', left: 130, top: 280, width: 1660, height: 216}}>
-      <div style={{fontSize: 40, color: C.ink2, marginBottom: 20}}>任务：{example.task} · 样本 A</div>
+      <div style={{fontSize: 40, color: C.ink2, marginBottom: 20}}>样本 A · 输出应付金额，不能把合计当答案</div>
       <div style={{fontSize: 62, fontWeight: 800, color: C.ink}}>{a.input}</div>
     </div>
     <div style={{position: 'absolute', left: 235, top: 565, width: 650}}>
@@ -65,9 +65,9 @@ const Case = ({f}) => (
 );
 
 const Change = ({f, idx}) => {
-  const sample = idx < 5 ? a : b;
+  const sample = idx < 5 || (idx === 5 && local(f, 5) < 66) ? a : b;
   const isB = sample === b;
-  const p = isB ? ease(local(f, 6), 22, 38) : ease(local(f, 4), 45, 22);
+  const p = isB ? ease(local(f, 6), 22, 38) : ease(local(f, 4), 105, 22);
   const color = isB ? C.red : C.green;
   const [prefix, rest] = b.input.split(String(b.before));
   const [middle, suffix] = rest.split(String(b.after));
@@ -75,16 +75,16 @@ const Change = ({f, idx}) => {
   const x = (1-p)**2*467 + 2*(1-p)*p*950 + p**2*1503;
   const y = (1-p)**2*542 + 2*(1-p)*p*800 + p**2*484;
   return <>
-    <div style={{...heading, top: 125, fontSize: 72}}>{isB ? '尾号，怎么变成了金额？' : '这个改动，先修好了 A'}</div>
+    <div style={{...heading, top: 125, fontSize: 72}}>{isB ? '最后的数字，不一定是要付的钱' : '只看这条：钱恰好写在最后'}</div>
     {isB && <div style={{position: 'absolute', left: 130, top: 245, fontSize: 40, color: C.green}}>A：{a.before} → {a.after}　旧错已修复</div>}
     <div style={{position: 'absolute', left: 130, top: 342, fontSize: 36, letterSpacing: 3, color: C.ink2}}>01 / 输入证据 · {sample.id}</div>
-    <div style={{position: 'absolute', left: 815, top: 342, fontSize: 36, letterSpacing: 3, color: C.ink2}}>02 / Prompt 修改</div>
+    <div style={{position: 'absolute', left: 815, top: 342, fontSize: 36, letterSpacing: 3, color: C.ink2}}>02 / 试改提示词</div>
     <div style={{position: 'absolute', left: 1340, top: 342, fontSize: 36, letterSpacing: 3, color: C.ink2}}>03 / 输出</div>
     {isB ? <>
       <div style={{position: 'absolute', left: 130, top: 412, lineHeight: 1.15, fontSize: 64, fontWeight: 800, color: C.ink}}>{prefix}<span style={{color: C.green}}>{b.before}</span>{middle.split('，')[0]}，</div>
       <div style={{position: 'absolute', left: 130, top: 520, lineHeight: 1.2, fontSize: 48, color: C.ink2}}>{middle.split('，')[1]}</div>
       <div style={{position: 'absolute', left: 370, top: 489, fontSize: 88, lineHeight: 1.2, fontWeight: 900, color: C.amber, borderBottom: `3px solid ${C.amber}`}}>{b.after}<span style={{fontSize: 40}}>{suffix}</span></div>
-    </> : <div style={{position: 'absolute', left: 130, top: 414, width: 610, fontSize: 60, color: C.ink, fontWeight: 800, lineHeight: 1.4}}>{a.input}</div>}
+    </> : <div style={{position: 'absolute', left: 130, top: 414, width: 610, fontSize: 60, color: C.ink, fontWeight: 800, lineHeight: 1.4}}>{a.input.split('，').map((part, i) => <div key={i} style={{color: i === 2 ? C.green : C.ink, whiteSpace: 'nowrap'}}>{part}{i < 2 ? '，' : ''}</div>)}</div>}
     <div style={{position: 'absolute', left: 815, top: 418, width: 425, borderLeft: `3px solid ${C.blue}`, padding: '8px 0 8px 26px', boxSizing: 'border-box', fontSize: 52, color: C.amber, fontWeight: 800, lineHeight: 1.5}}>“{example.newPrompt.slice(0,5)}<br/>{example.newPrompt.slice(5)}”</div>
     <div style={{position: 'absolute', left: 745, top: 456}}><DrawArrow f={100} len={52} color={C.ink3}/></div>
     <div style={{position: 'absolute', left: 1260, top: 456}}><DrawArrow f={100} len={60} color={C.ink3}/></div>
@@ -98,7 +98,7 @@ const Change = ({f, idx}) => {
     </div>
     {isB && p > 0 && <svg width={1920} height={1080} style={{position: 'absolute', inset: 0, pointerEvents: 'none'}}><path d="M467 542 Q950 800 1503 484" pathLength={1} fill="none" stroke={C.amber} strokeWidth={3} strokeOpacity={0.45} strokeDasharray={1} strokeDashoffset={1-p}/></svg>}
     {isB && p > 0 && p < 1 && <div style={{position: 'absolute', left: x-tokenSize*1.1, top: y-tokenSize*0.6, fontSize: tokenSize, lineHeight: 1.2, fontWeight: 900, color: p < 0.7 ? C.amber : C.red, fontVariantNumeric: 'tabular-nums'}}>{b.after}</div>}
-    <div style={{position: 'absolute', left: 130, top: 780, fontSize: 64, fontWeight: 900, color: idx >= 7 ? C.red : C.ink2}}>{idx >= 7 ? '本版：退回' : isB && p >= 1 ? '错误来源：把订单尾号当成了金额' : '同一批输入，同一个通过条件'}</div>
+    <div style={{position: 'absolute', left: 130, top: 780, fontSize: 58, fontWeight: 900, color: idx >= 7 ? C.red : C.ink2}}>{idx >= 7 ? '修好一题 ≠ 足够支持换新版' : isB && p >= 1 ? '预期仍是80元，原来答对的却变错了' : isB ? '下一条：金额在前，尾号在后' : p >= 1 ? 'A通过，只能证明这一条修好了' : '局部猜测：这条的最后一个数字是金额'}</div>
   </>;
 };
 
@@ -106,15 +106,15 @@ const Matrix = ({idx}) => {
   const active = idx === 9 ? 0 : idx === 10 ? 1 : idx === 11 || idx === 12 ? 2 : -1;
   const labels = [['修复', '老错误修复', C.green], ['保护', '新回归出现', C.red], ['留出', '尚未验证', C.amber]];
   return <>
-    <div style={{...heading, fontSize: 72}}>只修好 A，还不够</div>
-    <div style={{position: 'absolute', left: 130, top: 245, fontSize: 40, color: C.ink2}}>同一次改动，检查三组样本</div>
+    <div style={{...heading, fontSize: 72}}>{idx === 8 ? '局部修好 ≠ 整体变好' : '换新版前，补齐三种证据'}</div>
+    <div style={{position: 'absolute', left: 130, top: 245, fontSize: 40, color: C.ink2}}>{idx === 8 ? '只重跑用来改稿的A，就会漏掉B的新错误' : '修复旧错 · 守住旧对 · 检查没参与改稿的题'}</div>
     {labels.map(([title, desc, color], i) => <div key={title} style={{position: 'absolute', left: 130+i*575, top: 350, width: 510, height: 340, textAlign: 'center', borderTop: `3px solid ${active === i ? color : 'rgba(255,255,255,0.12)'}`, background: active === i ? 'rgba(255,255,255,0.025)' : 'transparent'}}>
       <div style={{fontSize: 52, fontWeight: 800, color: C.ink, marginTop: 25}}>{title}</div>
       <div style={{height: 166, marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: active < 0 || active === i ? 1 : 0.65}}>{i === 0 ? <Check f={100} size={126}/> : i === 1 ? <Cross f={100} size={126}/> : <span style={{fontSize: 100, color, fontWeight: 900}}>未测</span>}</div>
       <div style={{fontSize: 42, color, marginTop: 8}}>{desc}</div>
     </div>)}
     <div style={{position: 'absolute', left: 130, top: 732, fontSize: 80, fontWeight: 900, color: C.red}}>本版：退回</div>
-    {idx >= 12 && <div style={{position: 'absolute', left: 680, top: 766, fontSize: 40, color: C.amber}}>{idx === 12 ? '留出结果用于修改 → 换新题' : idx === 13 ? '即使全过，也只说明这些题过关' : '偶发错误重复跑 · 关键任务扩大覆盖'}</div>}
+    {idx >= 12 && <div style={{position: 'absolute', left: 680, top: 766, fontSize: 38, color: C.amber}}>{idx === 12 ? '看过结果再改稿 → 补新的留出题' : idx === 13 ? '保护失败，不能用A通过抵消' : '全过也仅限这些题 · 重复跑 / 扩大覆盖'}</div>}
   </>;
 };
 
@@ -131,7 +131,7 @@ const Checklist = ({f, idx}) => (
         <div style={{fontSize: i < 3 ? 48 : 54, fontWeight: 800, color: on ? C.ink : C.ink2, marginTop: 20, whiteSpace: 'nowrap'}}>{text}</div>
       </div>;
     })}
-    <div style={{position: 'absolute', left: 130, top: 830, fontSize: 40, color: C.amber}}>修好一个错误 ≠ 一次成功的迭代</div>
+    <div style={{position: 'absolute', left: 130, top: 830, fontSize: 40, color: C.amber}}>先证明：旧错修好了 · 原来对的没变坏 · 新题也检查了</div>
   </>
 );
 
@@ -145,7 +145,7 @@ const Video002 = () => {
     <CornerTag f={f} text="合成示例 · 非模型实测" fontSize={34}/>
     {idx <= 1 ? <Hook f={f}/> : idx <= 3 ? <Case f={f}/> : idx <= 7 ? <Change f={f} idx={idx}/> : idx <= 14 ? <Matrix f={f} idx={idx}/> : <Checklist f={f} idx={idx}/>}
     {hasSubtitle && <div style={{position: 'absolute', left: 0, right: 0, bottom: 0, height: 192, background: 'linear-gradient(0deg,rgba(6,10,20,0.72),rgba(6,10,20,0))'}}/>}
-    {hasSubtitle && <Subtitle key={seg.id} lf={f-seg.from} text={seg.text} fontSize={48} height={seg.text.length > 32 ? 142 : 112} style={{background: 'transparent', border: 'none', borderRadius: 0, padding: '8px 12px', fontWeight: 600, lineHeight: 1.3, textShadow: '0 2px 5px rgba(0,0,0,0.85)'}}/>}
+    {hasSubtitle && <Subtitle key={seg.id} lf={f-seg.from} text={seg.text} fontSize={48} height={seg.text.length > 32 ? 142 : 112} style={{background: 'transparent', border: 'none', borderRadius: 0, padding: '8px 12px', fontWeight: 600, lineHeight: 1.3, textWrap: 'balance', textShadow: '0 2px 5px rgba(0,0,0,0.85)'}}/>}
     <ProgressBar f={f} total={total}/>
     {segments.map(s => <Sequence key={s.id} from={s.from} durationInFrames={s.frames}><Audio src={staticFile(`narration002/${s.id}.mp3`)}/></Sequence>)}
   </AbsoluteFill>;
