@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """旁白生成：18 句 edge-tts + 时长测量 → timing.json（静态图+剪辑基线的音频轨）"""
-import asyncio, json, subprocess, time
+import asyncio, hashlib, json, math, re, subprocess, time
 from pathlib import Path
 
 import edge_tts
@@ -42,35 +42,74 @@ def probe(path: Path) -> float:
     return float(out)
 
 
-async def main() -> None:
+async def generate(base, sentences, *, gaps=None, rates=None, tail=None, word_boundaries=False) -> None:
+    sentences = list(sentences)
+    voice, rate, gap = VOICE, RATE, GAP
+    gaps = [gap] * len(sentences) if gaps is None else list(gaps)
+    rates = [rate] * len(sentences) if rates is None else list(rates)
+    tail = TAIL if tail is None else tail
+    if not sentences or len(gaps) != len(sentences) or len(rates) != len(sentences):
+        raise ValueError("sentences, gaps and rates must have the same nonzero count")
+    if any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0
+           for value in [*gaps, tail]):
+        raise ValueError("gaps and tail must be finite nonnegative seconds")
+    if any(not isinstance(text, str) or not text.strip() for text in sentences):
+        raise ValueError("sentences must be nonempty strings")
+    if any(not isinstance(value, str) for value in rates):
+        raise ValueError("rates must be strings")
     t0 = time.time()
-    timing_path = BASE / "timing.json"
+    timing_path = Path(base) / "timing.json"
     timing_path.unlink(missing_ok=True)
-    aud = BASE / "narration"
+    aud = Path(base) / "narration"
     aud.mkdir(exist_ok=True)
-    for i, text in enumerate(SENTENCES, 1):
+    words, clip_sha256 = {}, {}
+    for i, (text, clip_rate) in enumerate(zip(sentences, rates), 1):
         out = aud / f"s{i:02d}.mp3"
         tmp = out.with_suffix(".tmp.mp3")
+        word_tmp = out.with_suffix('.tmp.words.jsonl')
         try:
-            await edge_tts.Communicate(text, VOICE, rate=RATE).save(str(tmp))
+            if word_boundaries:
+                await edge_tts.Communicate(text, voice, rate=clip_rate, boundary='WordBoundary').save(str(tmp), str(word_tmp))
+                entries = [json.loads(line) for line in word_tmp.read_text().splitlines()]
+                normalize = lambda value: re.sub(r'[^\w]', '', value)
+                if not entries or normalize(''.join(e['text'] for e in entries)) != normalize(text):
+                    raise ValueError('word boundaries do not match narration')
+                boundaries = [{'text': e['text'], 'start': e['offset']/1e7, 'end': (e['offset']+e['duration'])/1e7} for e in entries]
+                if any(not math.isfinite(e['start']) or not math.isfinite(e['end']) or e['start'] < 0 or e['end'] <= e['start'] for e in boundaries) or any(b['start'] < a['end']-0.001 for a,b in zip(boundaries, boundaries[1:])):
+                    raise ValueError('invalid word boundary order')
+                words[f's{i:02d}'] = boundaries
+                clip_sha256[f's{i:02d}'] = hashlib.sha256(tmp.read_bytes()).hexdigest()
+            else:
+                await edge_tts.Communicate(text, voice, rate=clip_rate).save(str(tmp))
             tmp.replace(out)
         finally:
             tmp.unlink(missing_ok=True)
+            word_tmp.unlink(missing_ok=True)
         print(f"s{i:02d} ok")
-    durations = {f"s{i:02d}": probe(aud / f"s{i:02d}.mp3") for i in range(1, len(SENTENCES) + 1)}
-    total = sum(durations.values()) + GAP * (len(SENTENCES) - 1) + TAIL
-    chars = sum(len(s) for s in SENTENCES)
+    durations = {f"s{i:02d}": probe(aud / f"s{i:02d}.mp3") for i in range(1, len(sentences) + 1)}
+    if word_boundaries and any(words[id][-1]['end'] > duration + 0.1 for id, duration in durations.items()):
+        raise ValueError('word boundaries exceed audio duration')
+    total = sum(durations.values()) + sum(gaps[:-1]) + tail
+    chars = sum(len(s) for s in sentences)
     meta = {
-        "voice": VOICE, "rate": RATE, "gap": GAP, "tail": TAIL,
-        "sentences": SENTENCES, "durations": durations,
+        "voice": voice, "rate": rate, "gap": gap, "tail": tail,
+        "gaps": {f"s{i:02d}": value for i, value in enumerate(gaps, 1)},
+        "rates": {f"s{i:02d}": value for i, value in enumerate(rates, 1)},
+        "sentences": sentences, "durations": durations,
         "chars": chars,
         "speech_seconds": round(sum(durations.values()), 2),
         "total_seconds": round(total, 2),
         "gen_seconds": round(time.time() - t0, 1),
     }
+    if word_boundaries:
+        meta.update(words=words, clip_sha256=clip_sha256)
     timing_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
     print(f"chars={chars} speech={meta['speech_seconds']}s total≈{meta['total_seconds']}s "
           f"(rate≈{chars / sum(durations.values()):.1f}字/秒)")
+
+
+async def main() -> None:
+    await generate(BASE, SENTENCES)
 
 
 if __name__ == "__main__":
