@@ -33,13 +33,13 @@ SENTENCES = [
     "保存这张检查卡，下次改提示词前照着检查。"
 ]
 
-GAPS = [0.2, 0.85, 0.25, 0.35, 0.2, 0.25, 0.7, 0.75, 0.25, 0.35, 0.35, 0.3, 0.45, 0.55, 0.4, 0.25, 0.3, 0.45, 0.65, 0.0]
+GAPS = [0.5, 1.4, 0.35, 0.7, 0.55, 0.75, 1.1, 1.0, 0.35, 0.5, 0.5, 0.5, 0.6, 1.0, 0.6, 0.5, 0.5, 0.6, 0.85, 0.0]
 RATES = ['+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+0%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+6%', '+0%', '+6%']
-TAIL = 2.6
+TAIL = 4.0
 
 
 async def main() -> None:
-    await shared.generate(BASE, SENTENCES, gaps=GAPS, rates=RATES, tail=TAIL)
+    await shared.generate(BASE, SENTENCES, gaps=GAPS, rates=RATES, tail=TAIL, word_boundaries=True)
 
 
 if __name__ == "__main__":

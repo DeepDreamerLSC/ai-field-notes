@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """旁白生成：18 句 edge-tts + 时长测量 → timing.json（静态图+剪辑基线的音频轨）"""
-import asyncio, json, math, subprocess, time
+import asyncio, hashlib, json, math, re, subprocess, time
 from pathlib import Path
 
 import edge_tts
@@ -42,7 +42,7 @@ def probe(path: Path) -> float:
     return float(out)
 
 
-async def generate(base, sentences, *, gaps=None, rates=None, tail=None) -> None:
+async def generate(base, sentences, *, gaps=None, rates=None, tail=None, word_boundaries=False) -> None:
     sentences = list(sentences)
     voice, rate, gap = VOICE, RATE, GAP
     gaps = [gap] * len(sentences) if gaps is None else list(gaps)
@@ -62,16 +62,33 @@ async def generate(base, sentences, *, gaps=None, rates=None, tail=None) -> None
     timing_path.unlink(missing_ok=True)
     aud = Path(base) / "narration"
     aud.mkdir(exist_ok=True)
+    words, clip_sha256 = {}, {}
     for i, (text, clip_rate) in enumerate(zip(sentences, rates), 1):
         out = aud / f"s{i:02d}.mp3"
         tmp = out.with_suffix(".tmp.mp3")
+        word_tmp = out.with_suffix('.tmp.words.jsonl')
         try:
-            await edge_tts.Communicate(text, voice, rate=clip_rate).save(str(tmp))
+            if word_boundaries:
+                await edge_tts.Communicate(text, voice, rate=clip_rate, boundary='WordBoundary').save(str(tmp), str(word_tmp))
+                entries = [json.loads(line) for line in word_tmp.read_text().splitlines()]
+                normalize = lambda value: re.sub(r'[^\w]', '', value)
+                if not entries or normalize(''.join(e['text'] for e in entries)) != normalize(text):
+                    raise ValueError('word boundaries do not match narration')
+                boundaries = [{'text': e['text'], 'start': e['offset']/1e7, 'end': (e['offset']+e['duration'])/1e7} for e in entries]
+                if any(not math.isfinite(e['start']) or not math.isfinite(e['end']) or e['start'] < 0 or e['end'] <= e['start'] for e in boundaries) or any(b['start'] < a['end']-0.001 for a,b in zip(boundaries, boundaries[1:])):
+                    raise ValueError('invalid word boundary order')
+                words[f's{i:02d}'] = boundaries
+                clip_sha256[f's{i:02d}'] = hashlib.sha256(tmp.read_bytes()).hexdigest()
+            else:
+                await edge_tts.Communicate(text, voice, rate=clip_rate).save(str(tmp))
             tmp.replace(out)
         finally:
             tmp.unlink(missing_ok=True)
+            word_tmp.unlink(missing_ok=True)
         print(f"s{i:02d} ok")
     durations = {f"s{i:02d}": probe(aud / f"s{i:02d}.mp3") for i in range(1, len(sentences) + 1)}
+    if word_boundaries and any(words[id][-1]['end'] > duration + 0.1 for id, duration in durations.items()):
+        raise ValueError('word boundaries exceed audio duration')
     total = sum(durations.values()) + sum(gaps[:-1]) + tail
     chars = sum(len(s) for s in sentences)
     meta = {
@@ -84,6 +101,8 @@ async def generate(base, sentences, *, gaps=None, rates=None, tail=None) -> None
         "total_seconds": round(total, 2),
         "gen_seconds": round(time.time() - t0, 1),
     }
+    if word_boundaries:
+        meta.update(words=words, clip_sha256=clip_sha256)
     timing_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
     print(f"chars={chars} speech={meta['speech_seconds']}s total≈{meta['total_seconds']}s "
           f"(rate≈{chars / sum(durations.values()):.1f}字/秒)")

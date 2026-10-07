@@ -1,7 +1,7 @@
-import {AbsoluteFill, Audio, Composition, Sequence, registerRoot, staticFile, useCurrentFrame} from 'remotion';
+import {AbsoluteFill, Audio, Composition, Easing, interpolate, Sequence, registerRoot, staticFile, useCurrentFrame} from 'remotion';
 import timing from './video002-timing.json';
 import example from './video002-case.json';
-import {FPS, C, FONT, ease, Background, Subtitle, ProgressBar, DrawArrow, Check, Cross} from './visuals';
+import {FPS, C, FONT, Background, Subtitle, ProgressBar, DrawArrow, Check, Cross} from './visuals';
 
 const ids = Object.keys(timing.durations).sort();
 let seconds = 0;
@@ -12,6 +12,27 @@ const segments = ids.map((id, i) => {
 });
 const total = Math.round(seconds * FPS);
 const local = (f, idx) => f - segments[idx].from;
+// Phrase anchors use WordBoundary timestamps from the same hashed audio clips.
+const clean = (text) => text.replace(/[^\w\u4e00-\u9fff]/g, '');
+const at = (idx, phrase) => {
+  const words = timing.words[ids[idx]];
+  const pos = clean(words.map(w => w.text).join('')).indexOf(clean(phrase));
+  if (pos < 0) throw new Error(`Missing speech anchor: ${phrase}`);
+  let cursor = 0;
+  for (const word of words) {
+    cursor += clean(word.text).length;
+    if (cursor > pos) return Math.ceil(word.start * FPS);
+  }
+  throw new Error(`Invalid speech anchor: ${phrase}`);
+};
+const move = (f, start, duration) => interpolate(f, [start, start+duration], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.inOut(Easing.quad)});
+const aStart = at(0, '提取对了');
+const bStart = segments[1].from + at(1, '另一条订单');
+const bMove = segments[1].from + at(1, '变成错误');
+const aMove = segments[5].from + at(5, '输出一百');
+const bInput = segments[5].from + Math.max(at(5, '另一条订单'), at(5, '输出一百') + 48 + 36);
+const flyStart = segments[6].from + at(6, '尾号') + 6;
+const flyEnd = flyStart + 72;
 const [a, b] = example.samples;
 const heading = {position: 'absolute', left: 130, top: 132, fontSize: 72, fontWeight: 900, color: C.ink};
 const NumberChange = ({before, after, p, color, size = 170}) => (
@@ -22,31 +43,28 @@ const NumberChange = ({before, after, p, color, size = 170}) => (
 );
 
 const Hook = ({f}) => {
-  const bStart = segments[1].from + 24;
-  const end = local(f, 1) >= 174;
   return <>
-    <div style={{...heading, fontSize: f < 48 ? 64 : 38, color: f < 48 ? C.ink : C.ink2}}>{f < 48 ? '优化 AI：修改给 AI 的指令（提示词）' : '改提示词，让 AI 提取对订单金额'}</div>
+    <div style={{...heading, fontSize: f < aStart ? 64 : 38, color: f < aStart ? C.ink : C.ink2}}>{f < aStart ? '优化 AI：修改给 AI 的指令（提示词）' : '改提示词，让 AI 提取对订单金额'}</div>
     {[a, b].map((sample, i) => {
-      const start = i ? bStart : 48;
+      const start = i ? bStart : aStart;
       const visible = f >= start;
-      const on = !end && (i ? f >= bStart : f < bStart);
+      const on = i ? f >= bStart : f < bStart;
       const color = i ? C.red : C.green;
-      return visible && !end && <div key={sample.id} style={{position: 'absolute', left: 130, top: 310+i*225, width: 1660, height: 210, opacity: on ? 1 : 0.1}}>
+      return visible && <div key={sample.id} style={{position: 'absolute', left: 130, top: 310+i*225, width: 1660, height: 210, opacity: on ? 1 : 0.1}}>
         <div style={{position: 'absolute', top: 66, fontSize: 42, color: C.ink2}}>订单 {sample.id}</div>
         <div style={{position: 'absolute', left: 230, top: 0, fontSize: 162, fontWeight: 900, color: C.ink2}}>{sample.before}</div>
-        <div style={{position: 'absolute', left: 640, top: 103}}><DrawArrow f={f} delay={start} len={100} color={color}/></div>
+        <div style={{position: 'absolute', left: 640, top: 103}}><DrawArrow f={100} delay={0} len={100} color={color}/></div>
         <div style={{position: 'absolute', left: 230, top: 180, fontSize: 32, color: C.ink2}}>旧提示词输出</div>
         <div style={{position: 'absolute', left: 820, top: 180, fontSize: 32, color: C.ink2}}>新提示词输出</div>
-        <div style={{position: 'absolute', left: 820, top: 0}}><NumberChange before={sample.before} after={sample.after} p={ease(f, start, 24)} color={color} size={162}/></div>
-        <div style={{position: 'absolute', left: 1320, top: 76, fontSize: 36, color}}>{i ? '正确 → 错取尾号' : '错取金额 → 正确'}</div>
+        <div style={{position: 'absolute', left: 820, top: 0}}><NumberChange before={sample.before} after={sample.after} p={move(f, i ? bMove : start, 54)} color={color} size={162}/></div>
+        <div style={{position: 'absolute', left: 1320, top: 76, fontSize: 36, color, opacity: f >= (i ? bMove : start)+54 ? 1 : 0}}>{i ? '正确 → 错取尾号' : '错取金额 → 正确'}</div>
       </div>;
     })}
-    {end && <div style={{position: 'absolute', left: 130, top: 720, fontSize: 88, fontWeight: 900, color: C.ink}}>一条金额对了，另一条却错了</div>}
   </>;
 };
 
 const Case = ({f}) => {
-  const wrong = local(f, 3) >= 125;
+  const wrong = local(f, 3) >= at(3, '旧提示词')+6;
   return <>
     <div style={{...heading, fontSize: 40, color: C.ink2}}>任务：从订单备注里，找出要付的钱</div>
     <div style={{position: 'absolute', left: 130, top: 275, fontSize: 48, color: C.ink2, opacity: wrong ? 0.25 : 0.6}}>{a.input}</div>
@@ -62,13 +80,12 @@ const Case = ({f}) => {
 };
 
 const Change = ({f, idx}) => {
-  const isB = idx > 5 || (idx === 5 && local(f, 5) >= 90);
+  const isB = f >= bInput;
   const sample = isB ? b : a;
-  const af = local(f, 4);
-  const p = isB ? ease(local(f, 6), 22, 38) : ease(local(f, 5), 0, 22);
+  const p = isB ? move(f, flyStart, 72) : move(f, aMove, 48);
   const flying = isB && p > 0 && p < 1;
-  const verdict = idx === 7;
-  const focus = verdict ? 'verdict' : isB ? (p > 0 ? 'output' : 'input') : idx === 5 ? 'output' : af < 72 ? 'input' : 'rule';
+  const verdict = idx === 7 && local(f, 7) >= at(7, '还不能');
+  const focus = verdict ? 'verdict' : isB ? (p > 0 ? 'output' : 'input') : f >= aMove ? 'output' : local(f, 4) < at(4, '你补一句提示词') ? 'input' : 'rule';
   const weight = (part) => verdict || flying ? 0.1 : focus === part ? 1 : 0.14;
   const [prefix, rest] = b.input.split(String(b.before));
   const [middle, suffix] = rest.split(String(b.after));
@@ -102,8 +119,8 @@ const Change = ({f, idx}) => {
 };
 
 const Matrix = ({f, idx}) => {
-  const active = idx === 8 || idx === 9 ? 0 : idx === 10 ? 1 : idx <= 12 ? 2 : local(f, 13) < 50 ? 0 : local(f, 13) < 92 ? 1 : 2;
-  const verdict = idx === 13 && local(f, 13) >= 144;
+  const active = idx === 8 || idx === 9 ? 0 : idx === 10 ? 1 : idx <= 12 ? 2 : local(f, 13) < at(13, '原来对的') ? 0 : local(f, 13) < at(13, '新订单') ? 1 : 2;
+  const verdict = idx === 13 && local(f, 13) >= at(13, '先别换提示词')+6;
   const labels = [['查旧错', '旧错误修好了', C.green], ['守旧对', '原来正确的变错了', C.red], ['测新例子', '没用来改提示词 · 未测', C.amber]];
   if (idx === 14) return <>
     <div style={{...heading, fontSize: 40, color: C.ink2}}>当前提示词改动：不采用 · 原来正确的订单出错</div>
@@ -130,7 +147,7 @@ const Matrix = ({f, idx}) => {
 const actions = ['保存原文与正确答案', '写清怎么算通过', '旧错、旧对、新例子', '一次只改一项，前后同测', '新错误加入下次检查'];
 const Checklist = ({f, idx}) => {
   const complete = idx === 19;
-  const active = idx === 15 ? (local(f, 15) < 120 ? 0 : 1) : idx === 16 ? 3 : idx === 17 ? 4 : 2;
+  const active = idx === 15 ? (local(f, 15) < at(15, '写清怎么算') ? 0 : 1) : idx === 16 ? 3 : idx === 17 ? 4 : 2;
   return <>
     <div style={{...heading, fontSize: complete ? 76 : 40, color: complete ? C.ink : C.ink2}}>改提示词前检查卡</div>
     {complete ? <>
@@ -157,7 +174,7 @@ const Video002 = () => {
     {idx <= 1 ? <Hook f={f}/> : idx <= 3 ? <Case f={f}/> : idx <= 7 ? <Change f={f} idx={idx}/> : idx <= 14 ? <Matrix f={f} idx={idx}/> : <Checklist f={f} idx={idx}/>}
     {hasSubtitle && <div style={{position: 'absolute', left: 0, right: 0, bottom: 0, height: 192, background: 'linear-gradient(0deg,rgba(6,10,20,0.72),rgba(6,10,20,0))'}}/>}
     {hasSubtitle && <Subtitle key={seg.id} lf={f-seg.from} text={seg.text} fontSize={48} height={seg.text.length > 32 ? 142 : 112} style={{background: 'transparent', border: 'none', borderRadius: 0, padding: '8px 12px', fontWeight: 600, lineHeight: 1.3, textWrap: 'balance', textShadow: '0 2px 5px rgba(0,0,0,0.85)'}}/>}
-    {!(idx === 6 && local(f, 6) > 22 && local(f, 6) < 60) && <ProgressBar f={f} total={total}/>}
+    {!(f > flyStart && f < flyEnd) && <ProgressBar f={f} total={total}/>}
     {segments.map(s => <Sequence key={s.id} from={s.from} durationInFrames={s.frames}><Audio src={staticFile(`narration002/${s.id}.mp3`)}/></Sequence>)}
   </AbsoluteFill>;
 };
