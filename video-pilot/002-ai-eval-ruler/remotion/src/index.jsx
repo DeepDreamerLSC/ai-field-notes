@@ -23,7 +23,9 @@ const at = (segIdx, offset) => SEGS[segIdx].from + offset;
 
 /* ---------- 共享触发锚点：同一旁白句内，动作与音效用同一个 t0 ---------- */
 const T = {
-  card_build: 6,       // s1 卡片入场
+  open_hit: 1,         // 开场定格印章落定重音
+  bugs: 20,            // s2 三个 bug 勾
+  riser: 12,           // s3 张力渐升
   reg_pre: 10,         // s2 前结果
   reg_wrong: 28,       // s2 后结果变错
   reg_zoom: 44,        // s2 急推 2024
@@ -38,7 +40,7 @@ const T = {
   grow: 16,            // s16 尺子变长
   sweep: 26,           // s17 结尾微光
 };
-const STEP_DELAY = (i) => Math.floor(SEGS[11].frames * (T.step0 + i * 0.12));
+const STEP_DELAY = (i) => Math.floor(SEGS[13].frames * (T.step0 + i * 0.12));
 
 /* ---------- 设计令牌 ---------- */
 const C = {
@@ -149,6 +151,59 @@ const DrawArrow = ({ p, len = 64, color = C.ink3, w = 3.4 }) => (
 );
 const zoomK = (ft, t0) => interpolate(ft, [t0, t0 + 6, t0 + 11], [1, 1.7, 1.6], { ...clamp, easing: Easing.bezier(0.55, 0, 0.7, 1) });
 
+/* ---------- 场景 0：倒叙开场（第 7 版 · 打回，冷开场钩） ---------- */
+const SceneOpen = ({ ft, segIdx }) => (
+  <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
+    {segIdx === 0 && (
+      <>
+        <div style={{
+          position: 'absolute', left: 930, top: 360, width: 680, height: 250,
+          transform: `rotate(-7deg) scale(${interpolate(ft, [0, 10], [1.05, 1], clamp)})`,
+          border: `6px solid ${C.red}`, borderRadius: 30,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 0 80px rgba(248,113,113,0.40)', background: 'rgba(248,113,113,0.07)',
+        }}>
+          <span style={{ fontSize: 66, fontWeight: 900, color: C.red, letterSpacing: 6 }}>这版直接打回</span>
+        </div>
+        <Appear f={ft} delay={10} y={26} style={{ position: 'absolute', left: 210, top: 340 }}>
+          <div style={{ fontSize: 150, fontWeight: 900, color: C.ink, lineHeight: 1.1 }}>第 <span style={{ color: C.red }}>7</span> 版</div>
+          <div style={{ fontSize: 44, color: C.ink2, marginTop: 18 }}>Prompt 迭代</div>
+        </Appear>
+        <Appear f={ft} delay={30} style={{ position: 'absolute', left: 216, top: 610 }}>
+          <span style={{ fontSize: 28, color: C.ink3 }}>上周 · 迭代记录（示例）</span>
+        </Appear>
+      </>
+    )}
+    {segIdx === 1 && (
+      <div style={{ position: 'absolute', inset: 0, textAlign: 'center', transform: `scale(${interpolate(ft, [0, 70], [1, 1.045], clamp)})` }}>
+        <div style={{ marginTop: 280, fontSize: 92, fontWeight: 900, color: C.ink }}>它明明修好了</div>
+        <div style={{ marginTop: 22, fontSize: 116, fontWeight: 900, color: C.green }}>3 个 bug</div>
+        <div style={{ marginTop: 44, display: 'flex', justifyContent: 'center', gap: 28 }}>
+          {[0, 1, 2].map((i) => {
+            const sp = pop(ft, T.bugs + i * 7, 12);
+            return (
+              <div key={i} style={{
+                width: 92, height: 92, borderRadius: 18, border: `2px solid ${C.green}88`,
+                background: 'rgba(52,211,153,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: fade(sp), transform: `scale(${0.8 + sp * 0.2})`,
+              }}><Check s={42} /></div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+    {segIdx === 2 && (
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        transform: `scale(${interpolate(ft, [0, 85], [1, 1.06], clamp)})`,
+      }}>
+        <div style={{ fontSize: 100, fontWeight: 900, color: C.ink }}>修好了，</div>
+        <div style={{ fontSize: 100, fontWeight: 900, color: C.amber, marginTop: 14 }}>为什么还打回？</div>
+      </div>
+    )}
+  </div>
+);
+
 /* ---------- 场景 1：具体回归对照（同一输入 · 固定答案 · 新旧结果） ---------- */
 const REG = [
   { label: '题 A：12 × 10', expect: 120, before: '120', after: '100', y: 400 },
@@ -190,22 +245,7 @@ const RegRow = ({ ft, r, i }) => {
   );
 };
 
-const SceneAnswer = ({ ft, segIdx }) => {
-  if (segIdx === 0) {
-    return (
-      <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-        <Appear f={ft} delay={2} y={34} style={{ position: 'absolute', width: '100%', top: 340, textAlign: 'center' }}>
-          <span style={{ fontSize: 72, fontWeight: 900, color: C.ink }}>你改了一版提示词，AI 答对了</span>
-        </Appear>
-        <Appear f={ft} delay={T.card_build + 30} y={30} style={{ position: 'absolute', left: 810, top: 540, width: 300, height: 170, ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Check s={64} />
-        </Appear>
-        <Appear f={ft} delay={T.card_build + 44} style={{ position: 'absolute', width: '100%', top: 760, textAlign: 'center' }}>
-          <span style={{ fontSize: 32, color: C.ink2 }}>优化成功？（示例）</span>
-        </Appear>
-      </div>
-    );
-  }
+const SceneAnswer = ({ ft }) => {
   const t0 = T.reg_zoom;
   const tx = RC.left + RC.preX + 125, ty = 510;            // 急推目标：前格列与两行之间（标签与 2024 均留可视带内）
   const z = interpolate(ft, [t0, t0 + 6, t0 + 11], [1, 1.3, 1.22], { ...clamp, easing: Easing.bezier(0.55, 0, 0.7, 1) });
@@ -240,14 +280,14 @@ const nodePos = (i) => {
   return { x: EL.cx + Math.cos(a) * EL.rx, y: EL.cy + Math.sin(a) * EL.ry };
 };
 const SceneLoop = ({ fs, ft, segIdx }) => {
-  const ringOn = segIdx === 3;
-  const ringOpacity = segIdx === 2 ? 0 : segIdx === 3 ? 1 : 0;
+  const ringOn = segIdx === 5;
+  const ringOpacity = segIdx === 4 ? 0 : segIdx === 5 ? 1 : 0;
   const trackP = ringOn ? ease(ft, 40, 24) : 0;
   const travelerA = ringOn && ft > 46 ? -Math.PI / 2 + ((ft - 46) / 26) * (Math.PI * 2 / 5) : -Math.PI / 2;
-  const rulerP = ease(ft, segIdx === 4 ? T.ruler_draw : 1e9, 20);
+  const rulerP = ease(ft, segIdx === 6 ? T.ruler_draw : 1e9, 20);
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      {segIdx === 2 && (
+      {segIdx === 4 && (
         <>
           <Appear f={ft} delay={2} y={34} style={{ position: 'absolute', width: '100%', top: 340, textAlign: 'center' }}>
             <span style={{ fontSize: 76, fontWeight: 900, color: C.ink }}>单次答对，只是<span style={{ color: C.amber }}>抽样</span></span>
@@ -257,7 +297,7 @@ const SceneLoop = ({ fs, ft, segIdx }) => {
           </Appear>
         </>
       )}
-      {ringOn && (
+      {segIdx === 5 && (
         <div style={{ position: 'absolute', inset: 0 }}>
           <svg width={1920} height={1080} style={{ position: 'absolute', left: 0, top: 0 }}>
             <ellipse cx={EL.cx} cy={EL.cy} rx={EL.rx} ry={EL.ry} fill="none" stroke="rgba(159,176,201,0.4)" strokeWidth={3} strokeDasharray="14 10" opacity={trackP} />
@@ -292,7 +332,7 @@ const SceneLoop = ({ fs, ft, segIdx }) => {
           </Appear>
         </div>
       )}
-      {segIdx === 4 && (
+      {segIdx === 6 && (
         <>
           <Appear f={ft} delay={4} y={30} style={{ position: 'absolute', width: '100%', top: 320, textAlign: 'center' }}>
             <span style={{ fontSize: 66, fontWeight: 900, color: C.amber }}>你缺的是一把固定的尺子</span>
@@ -343,16 +383,16 @@ const Cell = ({ x, y, state, color }) => (
   </div>
 );
 const SceneMatrix = ({ fs, ft, segIdx }) => {
-  const row3Done = segIdx === 9 ? ft > SEGS[9].frames * T.row3_late : segIdx > 9;
+  const row3Done = segIdx === 11 ? ft > SEGS[11].frames * T.row3_late : segIdx > 11;
   const st = [
-    { pre: segIdx >= 6 ? 'cross' : 'empty', post: segIdx >= 6 ? 'check' : 'empty' },
-    { pre: segIdx >= 7 ? 'check' : 'empty', post: segIdx >= 8 ? 'cross' : segIdx >= 7 ? 'q' : 'empty' },
-    { pre: segIdx >= 9 ? 'lock' : 'empty', post: segIdx > 9 ? 'check' : segIdx === 9 ? (row3Done ? 'check' : 'untested') : 'empty' },
+    { pre: segIdx >= 8 ? 'cross' : 'empty', post: segIdx >= 8 ? 'check' : 'empty' },
+    { pre: segIdx >= 9 ? 'check' : 'empty', post: segIdx >= 10 ? 'cross' : segIdx >= 9 ? 'q' : 'empty' },
+    { pre: segIdx >= 11 ? 'lock' : 'empty', post: segIdx > 11 ? 'check' : segIdx === 11 ? (row3Done ? 'check' : 'untested') : 'empty' },
   ];
-  const stampS = segIdx >= 8 ? pop(ft, T.stamp, 10) : 0;
-  const dimAt = Math.floor(SEGS[9].frames * T.row3_late);
-  const stampDim = segIdx === 9 ? interpolate(ft, [dimAt, dimAt + 20], [1, 0.3], clamp) : segIdx > 9 ? 0.3 : 1;  // 印章弱化与留出组 ✓ 同锚点
-  const sh = segIdx === 8 ? shake(ft, T.stamp + 6, 9) : { x: 0, y: 0 };
+  const stampS = segIdx >= 10 ? pop(ft, T.stamp, 10) : 0;
+  const dimAt = Math.floor(SEGS[11].frames * T.row3_late);
+  const stampDim = segIdx === 11 ? interpolate(ft, [dimAt, dimAt + 20], [1, 0.3], clamp) : segIdx > 11 ? 0.3 : 1;  // 印章弱化与留出组 ✓ 同锚点
+  const sh = segIdx === 10 ? shake(ft, T.stamp + 6, 9) : { x: 0, y: 0 };
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT, transform: `translate(${sh.x}px, ${sh.y}px)` }}>
       <div style={{ position: 'absolute', left: cellX.pre - 10, top: 196, fontSize: 32, color: C.ink3 }}>改动前</div>
@@ -368,7 +408,7 @@ const SceneMatrix = ({ fs, ft, segIdx }) => {
       })}
       {ROWS.map((r, i) => (
         <div key={r.name + '-a'} style={{ position: 'absolute', left: cellX.pre + CELL.w + 10, top: ROWS[i].y - 13 }}>
-          <DrawArrow p={segIdx >= 6 + i ? 1 : ease(fs, 30 + i * 8, 8)} len={150} color={r.col} />
+          <DrawArrow p={segIdx >= 8 + i ? 1 : ease(fs, 30 + i * 8, 8)} len={150} color={r.col} />
         </div>
       ))}
       {ROWS.map((r, i) => (
@@ -377,17 +417,17 @@ const SceneMatrix = ({ fs, ft, segIdx }) => {
           <Cell x={cellX.post} y={ROWS[i].y} state={st[i].post} color={r.col} />
         </div>
       ))}
-      {segIdx >= 6 && segIdx <= 7 && (
+      {segIdx >= 8 && segIdx <= 9 && (
         <Appear f={ft} delay={14} style={{ position: 'absolute', left: 1580, top: ROWS[0].y - 26 }}>
           <span style={{ fontSize: 30, color: C.green, fontWeight: 700 }}>全过 ✓</span>
         </Appear>
       )}
-      {segIdx === 9 && (
+      {segIdx === 11 && (
         <Appear f={ft} delay={T.lock + 6} style={{ position: 'absolute', left: 1560, top: ROWS[2].y - 40, width: 280 }}>
           <span style={{ fontSize: 28, color: C.cyan }}>迭代期间锁定</span>
         </Appear>
       )}
-      {segIdx >= 8 && (
+      {segIdx >= 10 && (
         <div style={{
           position: 'absolute', left: 720, top: ROWS[1].y - 88, width: 620, height: 176,
           transform: `rotate(-7deg) scale(${0.5 + stampS * 0.5})`, opacity: fade(stampS) * stampDim,
@@ -422,7 +462,7 @@ const SceneCaveat = ({ ft }) => (
 /* ---------- 场景 5：六步 → 一句（六步跟随口播逐项出现） ---------- */
 const STEPS = ['失败记录', '行为定义', '区分性样本', '可重复测量', '对照', '受控改动'];
 const SceneSteps = ({ ft, segIdx }) => {
-  const collapsed = segIdx >= 12;
+  const collapsed = segIdx >= 14;
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
       {!collapsed && STEPS.map((t, i) => {
@@ -455,12 +495,12 @@ const SceneSteps = ({ ft, segIdx }) => {
 
 /* ---------- 场景 6：不建平台 → 尺子长短 ---------- */
 const SceneRuler = ({ ft, segIdx }) => {
-  const strike = ease(ft, segIdx === 13 ? T.strike : 1e9, 12);
-  const growP = interpolate(ft, [segIdx === 15 ? T.grow : 1e9, (segIdx === 15 ? T.grow : 1e9) + 22], [0.4, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const strike = ease(ft, segIdx === 15 ? T.strike : 1e9, 12);
+  const growP = interpolate(ft, [segIdx === 17 ? T.grow : 1e9, (segIdx === 17 ? T.grow : 1e9) + 22], [0.4, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      {segIdx <= 14 && (
-        <div style={{ position: 'absolute', left: 200, top: 280, opacity: segIdx === 14 ? 0.5 : 1, transition: 'opacity 0.5s' }}>
+      {segIdx <= 16 && (
+        <div style={{ position: 'absolute', left: 200, top: 280, opacity: segIdx === 16 ? 0.5 : 1, transition: 'opacity 0.5s' }}>
           {[0, 1, 2].map((i) => (
             <div key={i} style={{
               width: 300 + i * 30, height: 64, marginTop: 26, borderRadius: 14,
@@ -474,17 +514,17 @@ const SceneRuler = ({ ft, segIdx }) => {
           <div style={{ marginTop: 30, fontSize: 30, color: C.ink3 }}>评测平台</div>
         </div>
       )}
-      {segIdx === 13 && (
+      {segIdx === 15 && (
         <Appear f={ft} delay={6} style={{ position: 'absolute', left: 760, top: 330 }}>
           <div style={{ fontSize: 58, fontWeight: 900, color: C.ink }}>不需要建<span style={{ color: C.red }}>评测平台</span></div>
         </Appear>
       )}
-      {segIdx === 14 && (
+      {segIdx === 16 && (
         <Appear f={ft} delay={4} style={{ position: 'absolute', width: '100%', top: 560, textAlign: 'center' }}>
           <span style={{ fontSize: 44, fontWeight: 800, color: C.ink }}>低风险任务：<span style={{ color: C.green }}>少量固定样本起步</span></span>
         </Appear>
       )}
-      {segIdx === 15 && (
+      {segIdx === 17 && (
         <>
           <Appear f={ft} delay={4} y={26} style={{ position: 'absolute', width: '100%', top: 280, textAlign: 'center' }}>
             <span style={{ fontSize: 54, fontWeight: 900, color: C.ink }}>任务越关键，<span style={{ color: C.amber }}>尺子就要越长</span></span>
@@ -551,29 +591,31 @@ const SceneClose = ({ ft }) => {
 
 /* ---------- SFX 钉帧表（精简为 10 条关键变化；与 T 锚点共享同一触发帧） ---------- */
 const SFX = [
-  { seg: 0, at: T.card_build, src: 'swoosh-slow.mp3', vol: 0.16, note: '答对卡片入场' },
-  { seg: 1, at: T.reg_wrong, src: 'glitch-virtual-quick.mp3', vol: 0.20, note: '前后对照变错' },
-  { seg: 1, at: T.reg_zoom, src: 'zoom-air-fast.mp3', vol: 0.22, note: '急推 2024（crash-zoom）' },
-  { seg: 4, at: T.ruler_draw, src: 'marker-pen-line.mp3', vol: 0.22, note: '尺子描画' },
-  { seg: 8, at: T.stamp, src: 'impact-cine-big.mp3', vol: 0.5, note: '打回印章（全片最大打击点）' },
-  { seg: 9, at: T.lock + 6, src: 'lock-quick.mp3', vol: 0.22, note: '留出组上锁' },
-  { seg: 11, at: STEP_DELAY(0), src: 'paper-slide.mp3', vol: 0.22, note: '六步首卡（跟随口播）' },
-  { seg: 13, at: T.strike, src: 'chalk-line.mp3', vol: 0.24, note: '划掉平台' },
-  { seg: 15, at: T.grow, src: 'clock-knob-spin.mp3', vol: 0.18, note: '尺子变长' },
-  { seg: 16, at: T.sweep, src: 'shimmer-sparkle-sweep.mp3', vol: 0.24, note: '结尾微光' },
+  { seg: 0, at: T.open_hit, src: 'bass-hit-short.mp3', vol: 0.32, note: '开场定格印章落定重音（0 帧声音事件）' },
+  { seg: 1, at: T.bugs, src: 'sparkle.mp3', vol: 0.20, note: '三个 bug 勾（单次）' },
+  { seg: 2, at: T.riser, src: 'riser-cine.mp3', vol: 0.10, note: '"为什么还打回"张力渐升' },
+  { seg: 3, at: T.reg_wrong, src: 'glitch-virtual-quick.mp3', vol: 0.20, note: '前后对照变错' },
+  { seg: 3, at: T.reg_zoom, src: 'zoom-air-fast.mp3', vol: 0.22, note: '急推 2024（crash-zoom）' },
+  { seg: 6, at: T.ruler_draw, src: 'marker-pen-line.mp3', vol: 0.22, note: '尺子描画' },
+  { seg: 10, at: T.stamp, src: 'impact-cine-big.mp3', vol: 0.5, note: '打回印章（全片最大打击点）' },
+  { seg: 11, at: T.lock + 6, src: 'lock-quick.mp3', vol: 0.22, note: '留出组上锁' },
+  { seg: 13, at: STEP_DELAY(0), src: 'paper-slide.mp3', vol: 0.22, note: '六步首卡（跟随口播）' },
+  { seg: 15, at: T.strike, src: 'chalk-line.mp3', vol: 0.24, note: '划掉平台' },
+  { seg: 17, at: T.grow, src: 'clock-knob-spin.mp3', vol: 0.18, note: '尺子变长' },
+  { seg: 18, at: T.sweep, src: 'shimmer-sparkle-sweep.mp3', vol: 0.24, note: '结尾微光' },
 ];
 
 const Bgm = ({ f }) => {
-  const v = interpolate(f, [0, 30, TOTAL - 60, TOTAL], [0, 0.14, 0.14, 0], clamp);
+  const v = interpolate(f, [0, 8, TOTAL - 60, TOTAL], [0.06, 0.14, 0.14, 0], clamp);
   return <AbsoluteFill><Audio src={staticFile('audio/bgm-tech-house.mp3')} volume={v} /></AbsoluteFill>;
 };
 
 /* ---------- 路由 ---------- */
 const SCENE_OF = (i) =>
-  i <= 1 ? 'answer' : i <= 4 ? 'loop' : i <= 9 ? 'matrix' : i === 10 ? 'caveat' : i <= 12 ? 'steps' : i <= 15 ? 'ruler' : 'close';
+  i <= 2 ? 'open' : i === 3 ? 'answer' : i <= 6 ? 'loop' : i <= 11 ? 'matrix' : i === 12 ? 'caveat' : i <= 14 ? 'steps' : i <= 17 ? 'ruler' : 'close';
 const SCENE_START = {};
-[0, 2, 5, 10, 11, 13, 16].forEach((i) => { SCENE_START[SCENE_OF(i)] = SEGS[i].from; });
-const SCENE_TAG = { answer: '示例', loop: null, matrix: '示例', caveat: null, steps: null, ruler: null, close: null };
+[0, 3, 4, 7, 12, 13, 15, 18].forEach((i) => { SCENE_START[SCENE_OF(i)] = SEGS[i].from; });
+const SCENE_TAG = { open: '示例', answer: '示例', loop: null, matrix: '示例', caveat: null, steps: null, ruler: null, close: null };
 
 const MainVideo = ({ bgm = true }) => {
   const f = useCurrentFrame();
@@ -587,7 +629,8 @@ const MainVideo = ({ bgm = true }) => {
     <AbsoluteFill style={{ opacity: fadeIn * fadeOut }}>
       <Background f={f} />
       {SCENE_TAG[scene] && <CornerTag f={f} text={SCENE_TAG[scene]} />}
-      {scene === 'answer' && <SceneAnswer ft={ft} segIdx={seg.idx} />}
+      {scene === 'open' && <SceneOpen ft={ft} segIdx={seg.idx} />}
+      {scene === 'answer' && <SceneAnswer ft={ft} />}
       {scene === 'loop' && <SceneLoop fs={fs} ft={ft} segIdx={seg.idx} />}
       {scene === 'matrix' && <SceneMatrix fs={fs} ft={ft} segIdx={seg.idx} />}
       {scene === 'caveat' && <SceneCaveat ft={ft} />}
