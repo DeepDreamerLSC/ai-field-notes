@@ -4,6 +4,7 @@ import {
 } from 'remotion';
 import { CameraMotionBlur } from '@remotion/motion-blur';
 import timing from './timing.json';
+import { wrapSub, textWidth } from './wrap.js';
 
 /* ---------- 时间轴（17 句） ---------- */
 const FPS = 30;
@@ -20,7 +21,26 @@ const SEGS = ids.map((id, i) => {
 const TOTAL = SEGS[SEGS.length - 1].from + SEGS[SEGS.length - 1].frames + 18;
 const at = (segIdx, offset) => SEGS[segIdx].from + offset;
 
-/* ---------- 设计令牌（频道一致） ---------- */
+/* ---------- 共享触发锚点：同一旁白句内，动作与音效用同一个 t0 ---------- */
+const T = {
+  card_build: 6,       // s1 卡片入场
+  reg_pre: 10,         // s2 前结果
+  reg_wrong: 28,       // s2 后结果变错
+  reg_zoom: 44,        // s2 急推 2024
+  ruler_draw: 16,      // s5 尺子描画
+  row1_flip: 22,       // s7 修复组
+  row2_q: 8,           // s8 悬念
+  stamp: 18,           // s9 印章
+  lock: 14,            // s10 锁
+  row3_late: 0.72,     // s10 留出组 ✓ 落在句 72% 处
+  step0: 0.10,         // s12 六步跟随口播的起点比例
+  strike: 16,          // s14 划掉
+  grow: 16,            // s16 尺子变长
+  sweep: 26,           // s17 结尾微光
+};
+const STEP_DELAY = (i) => Math.floor(SEGS[11].frames * (T.step0 + i * 0.12));
+
+/* ---------- 设计令牌 ---------- */
 const C = {
   ink: '#F2F6FC', ink2: '#9FB0C9', ink3: '#64789A',
   blue: '#4DA3FF', cyan: '#67E8F9', green: '#34D399', red: '#F87171', amber: '#FBBF24',
@@ -84,40 +104,19 @@ const CornerTag = ({ f, text }) => {
   );
 };
 
-/* 字幕：Q11 有效字高 ≥56px；26 字/行、标点禁则、孤行回收，全部句子 ≤2 行不截断 */
-const NO_LEAD = '。，？！；：、）】》”—';
-function wrapSub(t, per = 26) {
-  let lines = [];
-  for (let i = 0; i < t.length; i += per) lines.push(t.slice(i, i + per));
-  for (let i = 1; i < lines.length; i++) {
-    while (lines[i][0] && NO_LEAD.includes(lines[i][0]) && lines[i - 1].length) {
-      lines[i] = lines[i - 1].slice(-1) + lines[i];
-      lines[i - 1] = lines[i - 1].slice(0, -1);
-    }
-  }
-  if (lines.length >= 2 && lines[lines.length - 1].length < 4) {
-    const last0 = lines.pop();
-    let prev = lines.pop();
-    let last = last0;
-    while (last.length < 4 && prev.length) {
-      last = prev.slice(-1) + last;
-      prev = prev.slice(0, -1);
-    }
-    lines.push(prev, last);
-  }
-  return lines.slice(0, 2);
-}
+/* 字幕：wrap.js 实测宽度换行（≤2 行），底板减轻 + 毛玻璃 */
 const Subtitle = ({ lf, text }) => {
   const lines = wrapSub(text);
   const e = ease(lf, 0, 6);
   const lh = 78;
-  const h = lines.length * lh;
+  const w = Math.min(1560, Math.ceil(Math.max(...lines.map(textWidth))) + 72);  // 显式宽度：杜绝收缩换行
   return (
     <div style={{
-      position: 'absolute', left: '50%', bottom: 44, opacity: e, maxWidth: 1560,
+      position: 'absolute', left: '50%', bottom: 44, opacity: e, width: w, boxSizing: 'content-box',
       transform: `translateX(-50%) translateY(${(1 - e) * 18}px)`,
-      padding: '12px 36px', borderRadius: 18, background: 'rgba(6,10,20,0.86)',
-      border: '1px solid rgba(255,255,255,0.09)',
+      padding: '10px 34px', borderRadius: 18, background: 'rgba(6,10,20,0.62)',
+      backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+      border: '1px solid rgba(255,255,255,0.08)',
       fontFamily: FONT, fontSize: 56, fontWeight: 700, color: C.ink,
       lineHeight: `${lh}px`, textAlign: 'center', whiteSpace: 'pre-wrap',
     }}>{lines.join('\n')}</div>
@@ -148,74 +147,87 @@ const DrawArrow = ({ p, len = 64, color = C.ink3, w = 3.4 }) => (
     <polygon points={`${2 + (len - 2) * p},13 ${2 + (len - 2) * p - 13},5 ${2 + (len - 2) * p - 13},21`} fill={color} opacity={p > 0.65 ? 1 : 0} />
   </svg>
 );
+const zoomK = (ft, t0) => interpolate(ft, [t0, t0 + 6, t0 + 11], [1, 1.7, 1.6], { ...clamp, easing: Easing.bezier(0.55, 0, 0.7, 1) });
 
-/* ---------- 场景 1：答题卡 ---------- */
-const SHEET = { cols: 5, rows: 2, cw: 168, ch: 116, gap: 16 };
-SHEET.w = SHEET.cols * SHEET.cw + (SHEET.cols - 1) * SHEET.gap;
-SHEET.h = SHEET.rows * SHEET.ch + (SHEET.rows - 1) * SHEET.gap;
-SHEET.x = (1920 - SHEET.w) / 2; SHEET.y = 300;
-const zoomK = (fs, t0) => interpolate(fs, [t0, t0 + 6, t0 + 11], [1, 1.9, 1.8], { ...clamp, easing: Easing.bezier(0.55, 0, 0.7, 1) });
+/* ---------- 场景 1：具体回归对照（同一输入 · 固定答案 · 新旧结果） ---------- */
+const REG = [
+  { label: '题 A：12 × 10', expect: 120, before: '120', after: '100', y: 400 },
+  { label: '题 B：库存余量', expect: 80, before: '80', after: '2024', y: 620 },
+];
+const RC = { left: 260, w: 1400, h: 150, preX: 360, postX: 800, cw: 250, ch: 100 };
 
-const Sheet = ({ fs, segIdx }) => {
-  const build = [0, 4, 7, 10, 12, 14, 16, 17, 18, 19];
-  const reds = segIdx >= 1 ? [2, 5, 8] : [];
+const RegRow = ({ ft, r, i }) => {
+  const sb = pop(ft, T.reg_pre + i * 8, 12);
+  const wrong = ft > T.reg_wrong + i * 8;
   return (
-    <div style={{ position: 'absolute', left: SHEET.x, top: SHEET.y, width: SHEET.w, height: SHEET.h }}>
-      {Array.from({ length: 10 }).map((_, i) => {
-        const r = Math.floor(i / 5), c = i % 5;
-        const s = pop(fs, build[i], 12);
-        const green = i === 0 && fs > 44;
-        const red = reds.includes(i) && fs > 28 + reds.indexOf(i) * 3;
-        return (
-          <div key={i} style={{
-            position: 'absolute', left: c * (SHEET.cw + SHEET.gap), top: r * (SHEET.ch + SHEET.gap),
-            width: SHEET.cw, height: SHEET.ch, borderRadius: 16,
-            background: green ? 'rgba(52,211,153,0.16)' : red ? 'rgba(248,113,113,0.16)' : 'rgba(255,255,255,0.045)',
-            border: `1.5px solid ${green ? C.green : red ? C.red : 'rgba(255,255,255,0.12)'}`,
-            boxShadow: green ? '0 0 26px rgba(52,211,153,0.25)' : red ? '0 0 26px rgba(248,113,113,0.28)' : 'none',
-            opacity: fade(s), transform: `scale(${0.9 + s * 0.1})`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {green && <Check />}
-            {red && <Cross />}
-          </div>
-        );
-      })}
+    <div style={{ position: 'absolute', left: RC.left, top: r.y - RC.h / 2, width: RC.w, height: RC.h, ...CARD, opacity: fade(sb) }}>
+      <div style={{ position: 'absolute', left: 36, top: RC.h / 2 - 34, width: 300 }}>
+        <div style={{ fontSize: 34, fontWeight: 800, color: C.ink }}>{r.label}</div>
+        <div style={{ fontSize: 26, color: C.ink3, marginTop: 6 }}>期望 {r.expect}</div>
+      </div>
+      <div style={{
+        position: 'absolute', left: RC.preX, top: (RC.h - RC.ch) / 2, width: RC.cw, height: RC.ch, borderRadius: 16,
+        border: `1.5px solid ${C.green}99`, background: 'rgba(52,211,153,0.10)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+      }}>
+        <Check s={34} /><span style={{ fontSize: 40, fontWeight: 800, color: C.ink }}>{r.before}</span>
+      </div>
+      <div style={{ position: 'absolute', left: RC.preX + RC.cw + 26, top: RC.h / 2 - 13 }}>
+        <DrawArrow p={ease(ft, T.reg_pre + 10 + i * 8, 8)} len={120} color={C.ink3} />
+      </div>
+      <div style={{
+        position: 'absolute', left: RC.postX, top: (RC.h - RC.ch) / 2, width: RC.cw + (i === 1 ? 60 : 0), height: RC.ch, borderRadius: 16,
+        border: `1.5px solid ${wrong ? C.red : 'rgba(255,255,255,0.13)'}`,
+        background: wrong ? 'rgba(248,113,113,0.13)' : 'rgba(255,255,255,0.04)',
+        boxShadow: wrong ? '0 0 30px rgba(248,113,113,0.25)' : 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+        opacity: fade(ease(ft, T.reg_wrong - 4 + i * 8, 8)),
+      }}>
+        {wrong ? <Cross s={34} /> : <span style={{ fontSize: 30, color: C.ink3 }}>…</span>}
+        <span style={{ fontSize: 40, fontWeight: 800, color: wrong ? C.red : C.ink3 }}>{wrong ? r.after : '…'}</span>
+      </div>
     </div>
   );
 };
 
-const SceneAnswer = ({ fs, segIdx }) => {
-  const t0 = 22;
-  const z = segIdx >= 1 ? zoomK(fs, t0) : 1;
-  const cx = SHEET.x + SHEET.w / 2, cy = SHEET.y + SHEET.h / 2;
-  const ccx = interpolate(fs, [t0, t0 + 6], [960, cx], { ...clamp, easing: Easing.in(Easing.quad) });
-  const ccy = interpolate(fs, [t0, t0 + 6], [540, cy], { ...clamp, easing: Easing.in(Easing.quad) });
-  const sh = segIdx >= 1 ? shake(fs, t0 + 8, 8) : { x: 0, y: 0 };
-  const sheetEl = (
+const SceneAnswer = ({ ft, segIdx }) => {
+  if (segIdx === 0) {
+    return (
+      <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
+        <Appear f={ft} delay={2} y={34} style={{ position: 'absolute', width: '100%', top: 340, textAlign: 'center' }}>
+          <span style={{ fontSize: 72, fontWeight: 900, color: C.ink }}>你改了一版提示词，AI 答对了</span>
+        </Appear>
+        <Appear f={ft} delay={T.card_build + 30} y={30} style={{ position: 'absolute', left: 810, top: 540, width: 300, height: 170, ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Check s={64} />
+        </Appear>
+        <Appear f={ft} delay={T.card_build + 44} style={{ position: 'absolute', width: '100%', top: 760, textAlign: 'center' }}>
+          <span style={{ fontSize: 32, color: C.ink2 }}>优化成功？（示例）</span>
+        </Appear>
+      </div>
+    );
+  }
+  const t0 = T.reg_zoom;
+  const tx = RC.left + RC.preX + 125, ty = 510;            // 急推目标：前格列与两行之间（标签与 2024 均留可视带内）
+  const z = interpolate(ft, [t0, t0 + 6, t0 + 11], [1, 1.3, 1.22], { ...clamp, easing: Easing.bezier(0.55, 0, 0.7, 1) });
+  const ccx = interpolate(ft, [t0, t0 + 6], [960, tx], { ...clamp, easing: Easing.in(Easing.quad) });
+  const ccy = interpolate(ft, [t0, t0 + 6], [540, ty], { ...clamp, easing: Easing.in(Easing.quad) });
+  const sh = shake(ft, t0 + 8, 8);
+  const cards = (
     <div style={{ position: 'absolute', left: 0, top: 0, width: 1920, height: 1080, transformOrigin: '0 0', transform: `translate(${960 - ccx * z + sh.x}px, ${540 - ccy * z + sh.y}px) scale(${z})` }}>
-      <Sheet fs={fs} segIdx={segIdx} />
+      {REG.map((r, i) => <RegRow key={r.label} ft={ft} r={r} i={i} />)}
     </div>
   );
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      {segIdx === 0 ? (
-        <>
-          <Appear f={fs} delay={2} style={{ position: 'absolute', width: '100%', top: 170, textAlign: 'center' }}>
-            <span style={{ fontSize: 34, color: C.ink2 }}>测试：10 道题（示例）</span>
-          </Appear>
-          <Appear f={fs} delay={52} style={{ position: 'absolute', width: '100%', top: 700, textAlign: 'center' }}>
-            <span style={{ fontSize: 62, fontWeight: 900, color: C.ink }}>答对 <b style={{ color: C.green }}>1</b> 题</span>
-          </Appear>
-        </>
-      ) : (
-        <Appear f={fs} delay={38} y={18} style={{ position: 'absolute', width: '100%', top: 170, textAlign: 'center' }}>
-          <span style={{ fontSize: 54, fontWeight: 900, color: C.amber }}>另外 10 题里，错了 3 道 —— ≠ 变好了</span>
-        </Appear>
-      )}
-      {segIdx >= 1 && fs >= t0 && fs <= t0 + 7 ? (
-        <CameraMotionBlur shutterAngle={200} samples={20}>{sheetEl}</CameraMotionBlur>
-      ) : sheetEl}
+      <Appear f={ft} delay={2} y={20} style={{ position: 'absolute', width: '100%', top: 138, textAlign: 'center' }}>
+        <span style={{ fontSize: 46, fontWeight: 800, color: C.amber }}>同一道旧题：改动前 ✓ → 改动后 ✗</span>
+      </Appear>
+      <div style={{ position: 'absolute', left: RC.left + RC.preX + 40, top: 305, fontSize: 26, color: C.ink3 }}>改动前</div>
+      <div style={{ position: 'absolute', left: RC.left + RC.postX + 60, top: 305, fontSize: 26, color: C.ink3 }}>改动后</div>
+      {ft >= t0 && ft <= t0 + 7 ? <CameraMotionBlur shutterAngle={200} samples={20}>{cards}</CameraMotionBlur> : cards}
+      <Appear f={ft} delay={t0 + 34} style={{ position: 'absolute', width: '100%', top: 760, textAlign: 'center' }}>
+        <span style={{ fontSize: 40, fontWeight: 800, color: C.red }}>不是没学会，是把会的改坏了</span>
+      </Appear>
     </div>
   );
 };
@@ -227,39 +239,35 @@ const nodePos = (i) => {
   const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
   return { x: EL.cx + Math.cos(a) * EL.rx, y: EL.cy + Math.sin(a) * EL.ry };
 };
-const SceneLoop = ({ fs, segIdx }) => {
+const SceneLoop = ({ fs, ft, segIdx }) => {
   const ringOn = segIdx === 3;
-  const ringOpacity = segIdx < 3 ? 0 : segIdx === 3 ? 1 : 0;   // s5 完全退场，不残留
-  const trackP = ringOn ? ease(fs, 40, 24) : 0;
-  const travelerA = ringOn && fs > 46 ? -Math.PI / 2 + ((fs - 46) / 26) * (Math.PI * 2 / 5) : -Math.PI / 2;
-  const rulerP = ease(fs, segIdx === 4 ? 14 : 1e9, 20);
+  const ringOpacity = segIdx === 2 ? 0 : segIdx === 3 ? 1 : 0;
+  const trackP = ringOn ? ease(ft, 40, 24) : 0;
+  const travelerA = ringOn && ft > 46 ? -Math.PI / 2 + ((ft - 46) / 26) * (Math.PI * 2 / 5) : -Math.PI / 2;
+  const rulerP = ease(ft, segIdx === 4 ? T.ruler_draw : 1e9, 20);
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
       {segIdx === 2 && (
         <>
-          <Appear f={fs} delay={2} y={34} style={{ position: 'absolute', width: '100%', top: 340, textAlign: 'center' }}>
+          <Appear f={ft} delay={2} y={34} style={{ position: 'absolute', width: '100%', top: 340, textAlign: 'center' }}>
             <span style={{ fontSize: 76, fontWeight: 900, color: C.ink }}>单次答对，只是<span style={{ color: C.amber }}>抽样</span></span>
           </Appear>
-          <Appear f={fs} delay={16} style={{ position: 'absolute', width: '100%', top: 520, textAlign: 'center' }}>
+          <Appear f={ft} delay={16} style={{ position: 'absolute', width: '100%', top: 520, textAlign: 'center' }}>
             <span style={{ fontSize: 36, color: C.ink2 }}>一次过关 ≠ 稳定表现</span>
           </Appear>
         </>
       )}
-      {segIdx >= 3 && (
-        <div style={{ position: 'absolute', inset: 0, opacity: ringOpacity, transition: 'opacity 0.5s' }}>
+      {ringOn && (
+        <div style={{ position: 'absolute', inset: 0 }}>
           <svg width={1920} height={1080} style={{ position: 'absolute', left: 0, top: 0 }}>
-            <ellipse
-              cx={EL.cx} cy={EL.cy} rx={EL.rx} ry={EL.ry}
-              fill="none" stroke="rgba(159,176,201,0.4)" strokeWidth={3}
-              strokeDasharray="14 10" opacity={trackP}
-            />
+            <ellipse cx={EL.cx} cy={EL.cy} rx={EL.rx} ry={EL.ry} fill="none" stroke="rgba(159,176,201,0.4)" strokeWidth={3} strokeDasharray="14 10" opacity={trackP} />
           </svg>
           {LOOP_NODES.map((t, i) => {
             const { x, y } = nodePos(i);
-            const s = pop(fs, 6 + i * 7, 12);
+            const s = pop(ft, 6 + i * 7, 12);
             const red = i === 4;
-            const traveler = Math.floor((fs - 46) / 26);
-            const active = ringOn && fs > 46 && traveler % 5 === i;
+            const traveler = Math.floor((ft - 46) / 26);
+            const active = ft > 46 && traveler % 5 === i;
             return (
               <div key={t} style={{
                 position: 'absolute', left: x - 95, top: y - 40, width: 190, height: 80, borderRadius: 16,
@@ -272,32 +280,31 @@ const SceneLoop = ({ fs, segIdx }) => {
               }}>{t}</div>
             );
           })}
-          {ringOn && fs > 46 && (
+          {ft > 46 && (
             <div style={{
               position: 'absolute', left: EL.cx + Math.cos(travelerA) * EL.rx - 11,
               top: EL.cy + Math.sin(travelerA) * EL.ry - 11, width: 22, height: 22, borderRadius: '50%',
               background: C.blue, boxShadow: '0 0 24px rgba(77,163,255,0.9)',
             }} />
           )}
-          <Appear f={fs} delay={76} style={{ position: 'absolute', width: '100%', top: 730, textAlign: 'center' }}>
+          <Appear f={ft} delay={86} style={{ position: 'absolute', width: '100%', top: 730, textAlign: 'center' }}>
             <span style={{ fontSize: 38, color: C.red, fontWeight: 700 }}>老问题，换个样子回来</span>
           </Appear>
         </div>
       )}
       {segIdx === 4 && (
         <>
-          <Appear f={fs} delay={4} y={30} style={{ position: 'absolute', width: '100%', top: 320, textAlign: 'center' }}>
+          <Appear f={ft} delay={4} y={30} style={{ position: 'absolute', width: '100%', top: 320, textAlign: 'center' }}>
             <span style={{ fontSize: 66, fontWeight: 900, color: C.amber }}>你缺的是一把固定的尺子</span>
           </Appear>
           <svg width={760} height={90} style={{ position: 'absolute', left: 580, top: 500 }}>
             <line x1={10} y1={45} x2={10 + 740 * rulerP} y2={45} stroke={C.amber} strokeWidth={5} strokeLinecap="round" />
             {Array.from({ length: 11 }).map((_, i) => {
               const x = 30 + i * 70;
-              const vis = rulerP > (i + 1) / 12;
-              return <line key={i} x1={x} y1={45 - (i % 5 === 0 ? 18 : 10)} x2={x} y2={45 + (i % 5 === 0 ? 18 : 10)} stroke={C.amber} strokeWidth={i % 5 === 0 ? 3 : 2} opacity={vis ? 0.9 : 0} />;
+              return <line key={i} x1={x} y1={45 - (i % 5 === 0 ? 18 : 10)} x2={x} y2={45 + (i % 5 === 0 ? 18 : 10)} stroke={C.amber} strokeWidth={i % 5 === 0 ? 3 : 2} opacity={rulerP > (i + 1) / 12 ? 0.9 : 0} />;
             })}
           </svg>
-          <Appear f={fs} delay={44} style={{ position: 'absolute', width: '100%', top: 660, textAlign: 'center' }}>
+          <Appear f={ft} delay={44} style={{ position: 'absolute', width: '100%', top: 660, textAlign: 'center' }}>
             <span style={{ fontSize: 38, color: C.ink2 }}>分清真进步，和碰运气</span>
           </Appear>
         </>
@@ -318,13 +325,15 @@ const Cell = ({ x, y, state, color }) => (
   <div style={{
     position: 'absolute', left: x, top: y - CELL.h / 2, width: CELL.w, height: CELL.h, borderRadius: 16,
     background: state === 'cross' ? 'rgba(248,113,113,0.13)' : state === 'check' ? 'rgba(52,211,153,0.11)' : state === 'q' ? 'rgba(251,191,36,0.10)' : 'rgba(255,255,255,0.04)',
-    border: `1.5px solid ${state === 'cross' ? C.red : state === 'check' ? C.green : state === 'q' ? C.amber : 'rgba(255,255,255,0.13)'}`,
+    border: state === 'untested' ? '1.5px dashed rgba(255,255,255,0.22)'
+      : `1.5px solid ${state === 'cross' ? C.red : state === 'check' ? C.green : state === 'q' ? C.amber : 'rgba(255,255,255,0.13)'}`,
     boxShadow: state === 'cross' ? '0 0 30px rgba(248,113,113,0.25)' : 'none',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   }}>
     {state === 'cross' && <Cross />}
     {state === 'check' && <Check color={color} />}
     {state === 'q' && <span style={{ fontSize: 44, fontWeight: 900, color: C.amber }}>?</span>}
+    {state === 'untested' && <span style={{ fontSize: 27, color: C.ink3 }}>未测</span>}
     {state === 'lock' && (
       <svg width="34" height="34" viewBox="0 0 34 34">
         <rect x="6" y="14" width="22" height="15" rx="4" fill="none" stroke={C.cyan} strokeWidth="2.6" />
@@ -333,15 +342,17 @@ const Cell = ({ x, y, state, color }) => (
     )}
   </div>
 );
-const SceneMatrix = ({ fs, segIdx }) => {
+const SceneMatrix = ({ fs, ft, segIdx }) => {
+  const row3Done = segIdx === 9 ? ft > SEGS[9].frames * T.row3_late : segIdx > 9;
   const st = [
     { pre: segIdx >= 6 ? 'cross' : 'empty', post: segIdx >= 6 ? 'check' : 'empty' },
     { pre: segIdx >= 7 ? 'check' : 'empty', post: segIdx >= 8 ? 'cross' : segIdx >= 7 ? 'q' : 'empty' },
-    { pre: segIdx >= 9 ? 'lock' : 'empty', post: segIdx >= 9 ? 'check' : 'empty' },
+    { pre: segIdx >= 9 ? 'lock' : 'empty', post: segIdx > 9 ? 'check' : segIdx === 9 ? (row3Done ? 'check' : 'untested') : 'empty' },
   ];
-  const stampT = 16;
-  const stampS = segIdx >= 8 ? pop(fs, stampT, 10) : 0;
-  const sh = segIdx >= 8 ? shake(fs, stampT + 6, 9) : { x: 0, y: 0 };
+  const stampS = segIdx >= 8 ? pop(ft, T.stamp, 10) : 0;
+  const dimAt = Math.floor(SEGS[9].frames * T.row3_late);
+  const stampDim = segIdx === 9 ? interpolate(ft, [dimAt, dimAt + 20], [1, 0.3], clamp) : segIdx > 9 ? 0.3 : 1;  // 印章弱化与留出组 ✓ 同锚点
+  const sh = segIdx === 8 ? shake(ft, T.stamp + 6, 9) : { x: 0, y: 0 };
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT, transform: `translate(${sh.x}px, ${sh.y}px)` }}>
       <div style={{ position: 'absolute', left: cellX.pre - 10, top: 196, fontSize: 32, color: C.ink3 }}>改动前</div>
@@ -349,9 +360,7 @@ const SceneMatrix = ({ fs, segIdx }) => {
       {ROWS.map((r, i) => {
         const s = pop(fs, 6 + i * 8, 12);
         return (
-          <div key={r.name} style={{
-            position: 'absolute', left: 120, top: r.y - 52, width: 520, opacity: fade(s), transform: `translateX(${(1 - s) * -40}px)`,
-          }}>
+          <div key={r.name} style={{ position: 'absolute', left: 120, top: r.y - 52, width: 520, opacity: fade(s), transform: `translateX(${(1 - s) * -40}px)` }}>
             <div style={{ fontSize: 42, fontWeight: 800, color: C.ink }}>{r.name}</div>
             <div style={{ fontSize: 28, color: C.ink3, marginTop: 6 }}>{r.sub}</div>
           </div>
@@ -369,22 +378,23 @@ const SceneMatrix = ({ fs, segIdx }) => {
         </div>
       ))}
       {segIdx >= 6 && segIdx <= 7 && (
-        <Appear f={fs} delay={26} style={{ position: 'absolute', left: 1580, top: ROWS[0].y - 26 }}>
+        <Appear f={ft} delay={14} style={{ position: 'absolute', left: 1580, top: ROWS[0].y - 26 }}>
           <span style={{ fontSize: 30, color: C.green, fontWeight: 700 }}>全过 ✓</span>
         </Appear>
       )}
       {segIdx === 9 && (
-        <Appear f={fs} delay={30} style={{ position: 'absolute', left: 1560, top: ROWS[2].y - 40, width: 280 }}>
+        <Appear f={ft} delay={T.lock + 6} style={{ position: 'absolute', left: 1560, top: ROWS[2].y - 40, width: 280 }}>
           <span style={{ fontSize: 28, color: C.cyan }}>迭代期间锁定</span>
         </Appear>
       )}
       {segIdx >= 8 && (
         <div style={{
           position: 'absolute', left: 720, top: ROWS[1].y - 88, width: 620, height: 176,
-          transform: `rotate(-7deg) scale(${0.5 + stampS * 0.5})`, opacity: fade(stampS),
+          transform: `rotate(-7deg) scale(${0.5 + stampS * 0.5})`, opacity: fade(stampS) * stampDim,
           border: `5px solid ${C.red}`, borderRadius: 26,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 0 60px rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.07)',
+          transition: 'opacity 0.5s',
         }}>
           <div style={{ fontSize: 52, fontWeight: 900, color: C.red, letterSpacing: 4 }}>修 A 伤 B</div>
           <div style={{ fontSize: 30, fontWeight: 700, color: C.red, marginTop: 8 }}>这版直接打回</div>
@@ -394,30 +404,29 @@ const SceneMatrix = ({ fs, segIdx }) => {
   );
 };
 
-/* ---------- 场景 4：≠ 整体变好 ---------- */
-const SceneCaveat = ({ fs }) => (
+/* ---------- 场景 4：即使三组都过 ---------- */
+const SceneCaveat = ({ ft }) => (
   <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-    <Appear f={fs} delay={4} y={30} style={{ position: 'absolute', width: '100%', top: 300, textAlign: 'center' }}>
-      <span style={{ fontSize: 60, fontWeight: 900, color: C.ink }}>三组都过 = 本版过关</span>
+    <Appear f={ft} delay={4} y={30} style={{ position: 'absolute', width: '100%', top: 300, textAlign: 'center' }}>
+      <span style={{ fontSize: 60, fontWeight: 900, color: C.ink }}>即使三组都过 = 本版过关</span>
     </Appear>
-    <Appear f={fs} delay={18} y={30} style={{ position: 'absolute', width: '100%', top: 470, textAlign: 'center' }}>
+    <Appear f={ft} delay={18} y={30} style={{ position: 'absolute', width: '100%', top: 470, textAlign: 'center' }}>
       <span style={{ fontSize: 76, fontWeight: 900, color: C.amber }}>≠ 整体变好了</span>
     </Appear>
-    <Appear f={fs} delay={34} style={{ position: 'absolute', width: '100%', top: 640, textAlign: 'center' }}>
+    <Appear f={ft} delay={34} style={{ position: 'absolute', width: '100%', top: 640, textAlign: 'center' }}>
       <span style={{ fontSize: 34, color: C.ink2 }}>只是"这些样本上，没发现问题"</span>
     </Appear>
   </div>
 );
 
-/* ---------- 场景 5：六步 → 一句 ---------- */
+/* ---------- 场景 5：六步 → 一句（六步跟随口播逐项出现） ---------- */
 const STEPS = ['失败记录', '行为定义', '区分性样本', '可重复测量', '对照', '受控改动'];
-const SceneSteps = ({ fs, segIdx }) => {
-  const delays = [4, 8, 11, 14, 16, 18];
+const SceneSteps = ({ ft, segIdx }) => {
   const collapsed = segIdx >= 12;
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
       {!collapsed && STEPS.map((t, i) => {
-        const s = pop(fs, delays[i], 12);
+        const s = pop(ft, STEP_DELAY(i), 12);
         const r = Math.floor(i / 3), c = i % 3;
         return (
           <div key={t} style={{
@@ -431,12 +440,12 @@ const SceneSteps = ({ fs, segIdx }) => {
         );
       })}
       {collapsed && (
-        <Appear f={fs} delay={6} y={26} style={{ position: 'absolute', width: '100%', top: 380, textAlign: 'center' }}>
+        <Appear f={ft} delay={8} y={26} style={{ position: 'absolute', width: '100%', top: 380, textAlign: 'center' }}>
           <span style={{ fontSize: 62, fontWeight: 900, ...GRAD }}>固定样本 · 固定判据 · 一次一个变量</span>
         </Appear>
       )}
       {collapsed && (
-        <Appear f={fs} delay={26} style={{ position: 'absolute', width: '100%', top: 540, textAlign: 'center' }}>
+        <Appear f={ft} delay={28} style={{ position: 'absolute', width: '100%', top: 540, textAlign: 'center' }}>
           <span style={{ fontSize: 34, color: C.ink2 }}>浓缩成一句</span>
         </Appear>
       )}
@@ -445,15 +454,13 @@ const SceneSteps = ({ fs, segIdx }) => {
 };
 
 /* ---------- 场景 6：不建平台 → 尺子长短 ---------- */
-const SceneRuler = ({ fs, segIdx }) => {
-  const strike = ease(fs, segIdx === 13 ? 14 : 1e9, 12);
-  const growP = interpolate(fs, [segIdx === 15 ? 14 : 1e9, (segIdx === 15 ? 14 : 1e9) + 22], [0.4, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const iconOn = segIdx === 13 ? 1 : segIdx === 14 ? 0.5 : 0;
+const SceneRuler = ({ ft, segIdx }) => {
+  const strike = ease(ft, segIdx === 13 ? T.strike : 1e9, 12);
+  const growP = interpolate(ft, [segIdx === 15 ? T.grow : 1e9, (segIdx === 15 ? T.grow : 1e9) + 22], [0.4, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
-      {/* s13 划掉平台 */}
       {segIdx <= 14 && (
-        <div style={{ position: 'absolute', left: 200, top: 280, opacity: iconOn, transition: 'opacity 0.5s' }}>
+        <div style={{ position: 'absolute', left: 200, top: 280, opacity: segIdx === 14 ? 0.5 : 1, transition: 'opacity 0.5s' }}>
           {[0, 1, 2].map((i) => (
             <div key={i} style={{
               width: 300 + i * 30, height: 64, marginTop: 26, borderRadius: 14,
@@ -468,19 +475,18 @@ const SceneRuler = ({ fs, segIdx }) => {
         </div>
       )}
       {segIdx === 13 && (
-        <Appear f={fs} delay={6} style={{ position: 'absolute', left: 760, top: 330 }}>
+        <Appear f={ft} delay={6} style={{ position: 'absolute', left: 760, top: 330 }}>
           <div style={{ fontSize: 58, fontWeight: 900, color: C.ink }}>不需要建<span style={{ color: C.red }}>评测平台</span></div>
         </Appear>
       )}
       {segIdx === 14 && (
-        <Appear f={fs} delay={4} style={{ position: 'absolute', width: '100%', top: 560, textAlign: 'center' }}>
+        <Appear f={ft} delay={4} style={{ position: 'absolute', width: '100%', top: 560, textAlign: 'center' }}>
           <span style={{ fontSize: 44, fontWeight: 800, color: C.ink }}>低风险任务：<span style={{ color: C.green }}>少量固定样本起步</span></span>
         </Appear>
       )}
-      {/* s15 尺子变长 */}
       {segIdx === 15 && (
         <>
-          <Appear f={fs} delay={4} y={26} style={{ position: 'absolute', width: '100%', top: 280, textAlign: 'center' }}>
+          <Appear f={ft} delay={4} y={26} style={{ position: 'absolute', width: '100%', top: 280, textAlign: 'center' }}>
             <span style={{ fontSize: 54, fontWeight: 900, color: C.ink }}>任务越关键，<span style={{ color: C.amber }}>尺子就要越长</span></span>
           </Appear>
           <div style={{ position: 'absolute', left: 360, top: 470, width: 1200, height: 60 }}>
@@ -495,7 +501,7 @@ const SceneRuler = ({ fs, segIdx }) => {
             <div style={{ position: 'absolute', left: 40, top: 66, fontSize: 28, color: C.ink3 }}>低风险 → 短尺</div>
             <div style={{ position: 'absolute', right: 40, top: 66, fontSize: 28, color: C.ink3 }}>关键任务 → 长尺</div>
           </div>
-          <Appear f={fs} delay={44} style={{ position: 'absolute', width: '100%', top: 660, textAlign: 'center' }}>
+          <Appear f={ft} delay={48} style={{ position: 'absolute', width: '100%', top: 660, textAlign: 'center' }}>
             <span style={{ fontSize: 30, color: C.ink2 }}>样本够不够，看风险与覆盖</span>
           </Appear>
         </>
@@ -505,11 +511,11 @@ const SceneRuler = ({ fs, segIdx }) => {
 };
 
 /* ---------- 场景 7：收尾三词 ---------- */
-const SceneClose = ({ fs }) => {
+const SceneClose = ({ ft }) => {
   const words = [
     { t: '修掉的', c: C.green }, { t: '没伤到的', c: C.blue }, { t: '没见过的', c: C.cyan },
   ];
-  const sweep = ease(fs, 30, 20);
+  const sweep = ease(ft, T.sweep, 20);
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily: FONT }}>
       <div style={{ position: 'absolute', width: '100%', top: 250, textAlign: 'center' }}>
@@ -517,7 +523,7 @@ const SceneClose = ({ fs }) => {
       </div>
       <div style={{ position: 'absolute', left: 210, top: 400, width: 1500, height: 260 }}>
         {words.map((w, i) => {
-          const s = pop(fs, 6 + i * 9, 12);
+          const s = pop(ft, 6 + i * 9, 12);
           return (
             <div key={w.t} style={{
               position: 'absolute', left: i * 500, top: 0, width: 440, height: 240, borderRadius: 24,
@@ -543,28 +549,18 @@ const SceneClose = ({ fs }) => {
   );
 };
 
-/* ---------- SFX 钉帧表 ---------- */
+/* ---------- SFX 钉帧表（精简为 10 条关键变化；与 T 锚点共享同一触发帧） ---------- */
 const SFX = [
-  { seg: 0, at: 6, src: 'swoosh-slow.mp3', vol: 0.18, note: '答题卡批量入场' },
-  { seg: 0, at: 46, src: 'sparkle-touch.mp3', vol: 0.30, note: '首格答对变绿' },
-  { seg: 1, at: 24, src: 'zoom-air-fast.mp3', vol: 0.24, note: '急推至答题卡' },
-  { seg: 1, at: 30, src: 'glitch-virtual-quick.mp3', vol: 0.18, note: '三格变红' },
-  { seg: 3, at: 10, src: 'air-woosh-deep.mp3', vol: 0.14, note: '循环流转' },
-  { seg: 4, at: 16, src: 'marker-pen-line.mp3', vol: 0.22, note: '尺子描画' },
-  { seg: 5, at: 8, src: 'sweep-fast-small.mp3', vol: 0.18, note: '三组样本框架入场' },
-  { seg: 6, at: 22, src: 'sparkle.mp3', vol: 0.22, note: '修复组全过' },
-  { seg: 7, at: 24, src: 'clock-tick-single.mp3', vol: 0.16, note: '回归组悬念 1' },
-  { seg: 7, at: 52, src: 'clock-tick-single.mp3', vol: 0.12, note: '回归组悬念 2' },
-  { seg: 8, at: 18, src: 'impact-cine-big.mp3', vol: 0.5, note: '打回印章（全片最大打击点）' },
-  { seg: 9, at: 28, src: 'lock-quick.mp3', vol: 0.22, note: '留出组上锁' },
-  { seg: 10, at: 10, src: 'glitch-static.mp3', vol: 0.14, note: '≠ 揭示' },
-  { seg: 11, at: 6, src: 'paper-slide.mp3', vol: 0.26, note: '六步连发 1' },
-  { seg: 11, at: 15, src: 'paper-slide.mp3', vol: 0.20, note: '六步连发 2' },
-  { seg: 11, at: 24, src: 'paper-slide.mp3', vol: 0.15, note: '六步连发 3' },
-  { seg: 12, at: 8, src: 'sweep-fast.mp3', vol: 0.20, note: '压缩成一句' },
-  { seg: 13, at: 16, src: 'chalk-line.mp3', vol: 0.24, note: '划掉平台' },
-  { seg: 15, at: 16, src: 'clock-knob-spin.mp3', vol: 0.18, note: '尺子变长' },
-  { seg: 16, at: 26, src: 'shimmer-sparkle-sweep.mp3', vol: 0.24, note: '结尾微光' },
+  { seg: 0, at: T.card_build, src: 'swoosh-slow.mp3', vol: 0.16, note: '答对卡片入场' },
+  { seg: 1, at: T.reg_wrong, src: 'glitch-virtual-quick.mp3', vol: 0.20, note: '前后对照变错' },
+  { seg: 1, at: T.reg_zoom, src: 'zoom-air-fast.mp3', vol: 0.22, note: '急推 2024（crash-zoom）' },
+  { seg: 4, at: T.ruler_draw, src: 'marker-pen-line.mp3', vol: 0.22, note: '尺子描画' },
+  { seg: 8, at: T.stamp, src: 'impact-cine-big.mp3', vol: 0.5, note: '打回印章（全片最大打击点）' },
+  { seg: 9, at: T.lock + 6, src: 'lock-quick.mp3', vol: 0.22, note: '留出组上锁' },
+  { seg: 11, at: STEP_DELAY(0), src: 'paper-slide.mp3', vol: 0.22, note: '六步首卡（跟随口播）' },
+  { seg: 13, at: T.strike, src: 'chalk-line.mp3', vol: 0.24, note: '划掉平台' },
+  { seg: 15, at: T.grow, src: 'clock-knob-spin.mp3', vol: 0.18, note: '尺子变长' },
+  { seg: 16, at: T.sweep, src: 'shimmer-sparkle-sweep.mp3', vol: 0.24, note: '结尾微光' },
 ];
 
 const Bgm = ({ f }) => {
@@ -572,7 +568,7 @@ const Bgm = ({ f }) => {
   return <AbsoluteFill><Audio src={staticFile('audio/bgm-tech-house.mp3')} volume={v} /></AbsoluteFill>;
 };
 
-/* ---------- 路由（17 句） ---------- */
+/* ---------- 路由 ---------- */
 const SCENE_OF = (i) =>
   i <= 1 ? 'answer' : i <= 4 ? 'loop' : i <= 9 ? 'matrix' : i === 10 ? 'caveat' : i <= 12 ? 'steps' : i <= 15 ? 'ruler' : 'close';
 const SCENE_START = {};
@@ -584,20 +580,21 @@ const MainVideo = ({ bgm = true }) => {
   const seg = SEGS.find((s) => f >= s.from && f < s.from + s.frames) ?? SEGS[SEGS.length - 1];
   const scene = SCENE_OF(seg.idx);
   const fs = f - (SCENE_START[scene] ?? 0);
+  const ft = f - seg.from;                     // 句内时间：段触发元素与 SFX 的共同基准
   const fadeIn = ease(f, 0, 8);
   const fadeOut = interpolate(f, [TOTAL - 16, TOTAL - 2], [1, 0], clamp);
   return (
     <AbsoluteFill style={{ opacity: fadeIn * fadeOut }}>
       <Background f={f} />
       {SCENE_TAG[scene] && <CornerTag f={f} text={SCENE_TAG[scene]} />}
-      {scene === 'answer' && <SceneAnswer fs={fs} segIdx={seg.idx} />}
-      {scene === 'loop' && <SceneLoop fs={fs} segIdx={seg.idx} />}
-      {scene === 'matrix' && <SceneMatrix fs={fs} segIdx={seg.idx} />}
-      {scene === 'caveat' && <SceneCaveat fs={fs} />}
-      {scene === 'steps' && <SceneSteps fs={fs} segIdx={seg.idx} />}
-      {scene === 'ruler' && <SceneRuler fs={fs} segIdx={seg.idx} />}
-      {scene === 'close' && <SceneClose fs={fs} />}
-      <Subtitle key={seg.id} lf={f - seg.from} text={seg.sentence} />
+      {scene === 'answer' && <SceneAnswer ft={ft} segIdx={seg.idx} />}
+      {scene === 'loop' && <SceneLoop fs={fs} ft={ft} segIdx={seg.idx} />}
+      {scene === 'matrix' && <SceneMatrix fs={fs} ft={ft} segIdx={seg.idx} />}
+      {scene === 'caveat' && <SceneCaveat ft={ft} />}
+      {scene === 'steps' && <SceneSteps ft={ft} segIdx={seg.idx} />}
+      {scene === 'ruler' && <SceneRuler ft={ft} segIdx={seg.idx} />}
+      {scene === 'close' && <SceneClose ft={ft} />}
+      <Subtitle key={seg.id} lf={ft} text={seg.sentence} />
       <ProgressBar f={f} />
       {bgm && <Bgm f={f} />}
       {SEGS.map((s) => (

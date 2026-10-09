@@ -12,7 +12,7 @@ TAIL = 0.90
 
 SENTENCES = [
     "你修改了一个提示词，测试的时候，AI 答对了。",
-    "你觉得优化成功了——但很可能，另外十道题里，有三道反而答错了。",
+    "同一道旧题，改动前答对，改动后答错——这不是没学会，是把会的改坏了。",
     "这不是抬杠，是所有 Agent 迭代都躲不开的坑：单次答对，只是抽样。",
     "改一版、跑几条、看着不错就上线，过几天老问题换个样子回来。",
     "不是改得不够勤，是没有一把固定的尺子，分不清真进步和碰运气。",
@@ -21,7 +21,7 @@ SENTENCES = [
     "第二组，回归保护样本——之前一直正常的任务，改完也必须全过。",
     "挂了，就是修好了 A、伤了 B，这版直接打回。",
     "第三组，留出样本——迭代过程中从没看过的题，最后再跑，防止你把答案“背”进了提示词。",
-    "注意：三组都过，也只是这一版过关——不等于整体变好了。",
+    "注意：即使三组都过，也只是这一版过关——不等于整体变好了。",
     "展开说是六步：失败记录、行为定义、区分性样本、可重复测量、对照、受控改动。",
     "浓缩成一句：固定样本、固定判据、一次只动一个变量。",
     "这不等于要建评测平台。",
@@ -41,14 +41,29 @@ def probe(path: Path) -> float:
     return float(out)
 
 
+def key(text: str) -> str:
+    import hashlib
+    return hashlib.sha256(f"{VOICE}|{RATE}|{text}".encode()).hexdigest()[:16]
+
+
 async def main() -> None:
     t0 = time.time()
     aud = BASE / "narration"
     aud.mkdir(exist_ok=True)
+    manifest_path = BASE / "narration" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    stale = [k for k in manifest if int(k[1:]) > len(SENTENCES)]
+    for k in stale:  # 句数变少时清掉多余音频
+        (aud / f"{k}.mp3").unlink(missing_ok=True)
+        del manifest[k]
     for i, text in enumerate(SENTENCES, 1):
-        out = aud / f"s{i:02d}.mp3"
-        if not out.exists():
+        sid = f"s{i:02d}"
+        out = aud / f"{sid}.mp3"
+        if manifest.get(sid) != key(text) or not out.exists():
+            out.unlink(missing_ok=True)
             await edge_tts.Communicate(text, VOICE, rate=RATE).save(str(out))
+            manifest[sid] = key(text)
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
     durations = {f"s{i:02d}": probe(aud / f"s{i:02d}.mp3") for i in range(1, len(SENTENCES) + 1)}
     total = sum(durations.values()) + GAP * (len(SENTENCES) - 1) + TAIL
     chars = sum(len(s) for s in SENTENCES)
